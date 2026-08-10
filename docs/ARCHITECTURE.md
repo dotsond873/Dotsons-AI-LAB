@@ -84,3 +84,55 @@ Continuously improves workflows, remembers preferences when appropriate, and sup
 ---
 
 This document serves as the master blueprint for Dotson Super AI.
+
+# Dotson Super AI Architecture
+
+## Vision
+
+Dotson Super AI is the flagship platform of Dotson Labs.
+
+Its purpose is to combine the strongest capabilities of modern AI systems into one unified, intelligent assistant.
+
+Rather than functioning as a single language model, Dotson Super AI is built as a modular platform with specialized components working together.
+
+---
+
+# Core Systems
+
+## User Interface
+- Text
+- Voice
+- Images
+- Video
+- Files
+
+## Conversation Engine
+Maintains context, understands user intent, and manages conversations.
+
+## Memory Engine
+- Short-term memory
+- Long-term memory
+- Project memory
+- Knowledge retrieval
+
+## Planning Engine
+Breaks large goals into manageable tasks and tracks progress.
+
+## Model Router
+Determines which AI capability or future model is best suited for each request.
+
+## Tool Framework
+Supports:
+- Web
+- Code
+- Documents
+- Images
+- Video
+- Automation
+- Future plugins
+
+## Security
+Privacy-first design with permission-based access.
+
+## Learning
+Designed to improve over time through modular expansion.

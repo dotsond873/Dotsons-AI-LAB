@@ -16,7 +16,7 @@ class OpenAIProvider(AIProvider):
 
     async def generate(self, prompt: str) -> str:
         response = await self.client.responses.create(
-            model=os.getenv("OPENAI_MODEL", "gpt-5"),
+            model=os.getenv("OPENAI_MODEL", "gpt-5.5"),
             input=prompt,
         )
 

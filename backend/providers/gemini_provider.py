@@ -16,7 +16,7 @@ class GeminiProvider(AIProvider):
 
     async def generate(self, prompt: str) -> str:
         response = await self.client.aio.models.generate_content(
-            model=os.getenv("GEMINI_MODEL", "gemini-2.5-pro"),
+            model=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
             contents=prompt,
         )
 

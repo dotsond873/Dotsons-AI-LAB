@@ -168,7 +168,7 @@ async def roles():
     }
 
 
-@app
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     try:

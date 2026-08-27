@@ -1,25 +1,59 @@
-class ModelRouter:
+class ODBRouter:
     """
-    Routes requests to the appropriate AI capability.
-    This will expand as Dotson Super AI gains additional models and tools.
+    Capability router for ODB SHADY 6.9.
+
+    This router does NOT choose between paid AI providers.
+    It decides what kind of capability the request needs.
     """
 
     def route(self, message: str) -> str:
         message_lower = message.lower()
 
-        if any(word in message_lower for word in ["code", "python", "javascript", "program"]):
-            return "coding"
+        serious_words = [
+            "suicide",
+            "kill myself",
+            "overdose",
+            "emergency",
+            "heart attack",
+            "stroke",
+            "bleeding",
+            "abuse",
+            "grief",
+            "died",
+            "death",
+            "funeral",
+            "depressed",
+            "panic attack",
+        ]
 
-        if any(word in message_lower for word in ["research", "search", "find", "latest"]):
-            return "research"
+        if any(term in message_lower for term in serious_words):
+            return "serious"
 
-        if any(word in message_lower for word in ["image", "picture", "photo", "draw"]):
+        if any(
+            term in message_lower
+            for term in ["image", "picture", "photo", "draw", "generate a scene"]
+        ):
             return "image"
 
-        if any(word in message_lower for word in ["plan", "steps", "strategy"]):
-            return "planning"
+        if any(
+            term in message_lower
+            for term in ["search", "research", "find", "latest", "look up", "news"]
+        ):
+            return "web"
 
-        return "general"
+        if any(
+            term in message_lower
+            for term in ["voice", "speak", "say this", "read this aloud", "audio"]
+        ):
+            return "voice"
+
+        if any(
+            term in message_lower
+            for term in ["admin", "users", "subscription", "billing", "payment"]
+        ):
+            return "admin"
+
+        return "chat"
 
 
-router = ModelRouter()
+router = ODBRouter()

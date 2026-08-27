@@ -1,6 +1,5 @@
 fastapi
 uvicorn[standard]
 pydantic
-openai
-anthropic
-google-genai
+python-dotenv
+httpx

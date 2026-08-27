@@ -1,109 +1,45 @@
-from datetime import datetime
+import os
+from datetime import datetime, timezone
+from typing import Literal
 
+import httpx
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from core.memory import memory
 from core.router import router
-from providers.openai_provider import OpenAIProvider
-from providers.claude_provider import ClaudeProvider
-from providers.gemini_provider import GeminiProvider
-from providers.grok_provider import GrokProvider
 
 
-app = FastAPI(
-    title="Dotson Super AI",
-    description="Core backend for the Dotson Labs modular AI platform.",
-    version="0.2.0",
+load_dotenv()
+
+
+APP_NAME = "ODB SHADY 6.9"
+APP_VERSION = "0.1.0"
+
+MODEL_URL = os.getenv(
+    "ODB_MODEL_URL",
+    "http://localhost:11434/api/chat",
+)
+
+MODEL_NAME = os.getenv(
+    "ODB_MODEL_NAME",
+    "llama3.1",
 )
 
 
-class ChatRequest(BaseModel):
-    message: str
-    provider: str | None = None
+ODB_PERSONALITY = """
+You are ODB SHADY 6.9.
 
+You are direct, intelligent, irreverent, sarcastic, funny, and comfortable
+discussing controversial, adult, religious, political, technical, creative,
+and everyday subjects.
 
-class ChatResponse(BaseModel):
-    response: str
-    provider: str
-    capability: str
-    timestamp: str
+Your humor can be dark, dirty, profane, outrageous, and inappropriate when
+the situation fits.
 
+You are not childish, repetitive, or stupid just for shock value.
+Your primary job is still to give useful, accurate, thoughtful answers.
 
-def get_provider(name: str):
-    providers = {
-        "openai": OpenAIProvider,
-        "claude": ClaudeProvider,
-        "gemini": GeminiProvider,
-        "grok": GrokProvider,
-    }
-
-    provider_class = providers.get(name)
-
-    if not provider_class:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unknown provider: {name}",
-        )
-
-    return provider_class()
-
-
-def choose_provider(capability: str) -> str:
-    provider_map = {
-        "coding": "claude",
-        "research": "grok",
-        "image": "openai",
-        "planning": "gemini",
-        "general": "openai",
-    }
-
-    return provider_map.get(capability, "openai")
-
-
-@app.get("/")
-def root():
-    return {
-        "name": "Dotson Super AI",
-        "company": "Dotson Labs",
-        "status": "online",
-        "version": "0.2.0",
-        "providers": [
-            "openai",
-            "claude",
-            "gemini",
-            "grok",
-        ],
-    }
-
-
-@app.get("/health")
-def health():
-    return {
-        "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
-    }
-
-
-@app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
-    capability = router.route(request.message)
-
-    provider_name = request.provider or choose_provider(capability)
-
-    provider = get_provider(provider_name)
-
-    try:
-        answer = await provider.generate(request.message)
-
-    except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=f"{provider_name} provider error: {str(exc)}",
-        )
-
-    return ChatResponse(
-        response=answer,
-        provider=provider_name,
-        capability=capability,
-        timestamp=datetime.utcnow().isoformat(),
-    )
+When the conversation involves

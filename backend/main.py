@@ -6,8 +6,8 @@ from pydantic import BaseModel
 
 from core.memory import memory
 from core.router import router
-from providers.local_provider import LocalProvider
 
+from providers.openai_provider import OpenAIProvider
 
 APP_NAME = "ODB SHADY 6.9"
 APP_VERSION = "0.1.0"
@@ -60,8 +60,7 @@ app.add_middleware(
 )
 
 
-provider = LocalProvider()
-
+provider = OpenAIProvider()
 
 class ChatRequest(BaseModel):
     message: str

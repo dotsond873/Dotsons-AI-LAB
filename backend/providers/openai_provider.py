@@ -8,6 +8,7 @@ class OpenAIProvider(AIProvider):
     """OpenAI provider for Dotson's Super AI."""
 
     name = "openai"
+model = os.getenv("OPENAI_MODEL", "gpt-5.5")
 
     def __init__(self):
         self.client = AsyncOpenAI(

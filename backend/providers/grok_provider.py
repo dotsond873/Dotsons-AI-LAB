@@ -17,7 +17,7 @@ class GrokProvider(AIProvider):
 
     async def generate(self, prompt: str) -> str:
         response = await self.client.chat.completions.create(
-            model=os.getenv("XAI_MODEL", "grok-4"),
+            model=self.model,
             messages=[
                 {"role": "user", "content": prompt}
             ],

@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from core.memory import memory
 from core.router import router
 
-from providers.openai_provider import OpenAIProvider
+from providers.grok_provider import GrokProvider
 
 APP_NAME = "ODB SHADY 6.9"
 APP_VERSION = "0.1.0"
@@ -60,7 +60,7 @@ app.add_middleware(
 )
 
 
-provider = OpenAIProvider()
+provider = GrokProvider()
 
 class ChatRequest(BaseModel):
     message: str

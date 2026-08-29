@@ -8,8 +8,7 @@ class OpenAIProvider(AIProvider):
     """OpenAI provider for Dotson's Super AI."""
 
     name = "openai"
-model = os.getenv("OPENAI_MODEL", "gpt-5.5")
-
+    model = os.getenv("OPENAI_MODEL", "gpt-5.5")
     def __init__(self):
         self.client = AsyncOpenAI(
             api_key=os.getenv("OPENAI_API_KEY")
@@ -17,7 +16,7 @@ model = os.getenv("OPENAI_MODEL", "gpt-5.5")
 
     async def generate(self, prompt: str) -> str:
         response = await self.client.responses.create(
-            model=os.getenv("OPENAI_MODEL", "gpt-5.5"),
+            model=self.model,
             input=prompt,
         )
 

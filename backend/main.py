@@ -60,8 +60,8 @@ app.add_middleware(
 )
 
 
-provider = GrokProvider()
 
+provider = GroqCloudProvider()
 class ChatRequest(BaseModel):
     message: str
     session_id: str = "default"

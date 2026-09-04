@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from core.memory import memory
 from core.router import router
 
-from providers.grok_provider import GrokProvider
+from providers.groqcloud_provider import GroqCloudProvider
 
 APP_NAME = "ODB SHADY 6.9"
 APP_VERSION = "0.1.0"

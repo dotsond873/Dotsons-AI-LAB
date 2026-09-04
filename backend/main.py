@@ -59,9 +59,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+provider = GroqCloudProvider(
 
-
-provider = GroqCloudProvider()
 class ChatRequest(BaseModel):
     message: str
     session_id: str = "default"

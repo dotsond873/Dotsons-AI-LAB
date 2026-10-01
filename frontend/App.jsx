@@ -1,5 +1,7 @@
-import { useState } from "react";
 
+import { useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 const API_URL =
   import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -34,15 +36,15 @@ export default function App() {
 
     try {
       const response = await fetch(`${API_URL}/chat`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: text,
-          session_id: sessionId,
-        }),
-      });
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    message: text,
+    session_id: sessionId,
+  }),
+});
 
       const data = await response.json();
 
@@ -117,7 +119,17 @@ export default function App() {
                 : "ODB"}
             </div>
 
-            <div>{message.text}</div>
+            <div style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>
+  {message.role === "assistant" ? (
+    <div style={{ overflowX: "auto" }}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+        {message.text}
+      </ReactMarkdown>
+    </div>
+  ) : (
+    <div style={{ whiteSpace: "pre-wrap" }}>{message.text}</div>
+  )}
+</div>
 
             {message.capability && (
               <div style={styles.capability}>

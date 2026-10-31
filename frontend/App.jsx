@@ -1,9 +1,9 @@
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 const API_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:8000";
+  (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
 
 export default function App() {
   const [messages, setMessages] = useState([
@@ -16,7 +16,34 @@ export default function App() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const sessionId = "odb-default-session";
+  const [sessionId, setSessionId] = useState(() => {
+    const saved = sessionStorage.getItem("odb-session");
+    const id = saved || crypto.randomUUID();
+    sessionStorage.setItem("odb-session", id);
+    return id;
+  });
+  const [status, setStatus] = useState("CHECKING");
+  const bottom = useRef(null);
+  useEffect(() => {
+    fetch(`${API_URL}/health`).then(r => {
+      if (!r.ok) throw new Error();
+      return r.json();
+    }).then(data => setStatus(data.provider_ready ? "READY" : "SETUP NEEDED"))
+      .catch(() => setStatus("OFFLINE"));
+  }, []);
+  useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, loading]);
+  async function newChat() {
+    try {
+      const response = await fetch(`${API_URL}/memory/${sessionId}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("Could not clear conversation.");
+      const id = crypto.randomUUID();
+      sessionStorage.setItem("odb-session", id);
+      setSessionId(id);
+      setMessages([{ role: "assistant", text: "Fresh chat. What are we working on?" }]);
+    } catch (error) {
+      setMessages(old => [...old, { role: "assistant", text: error.message }]);
+    }
+  }
 
   async function sendMessage() {
     const text = input.trim();
@@ -78,7 +105,7 @@ export default function App() {
   }
 
   function handleKeyDown(event) {
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       sendMessage();
     }
@@ -98,7 +125,8 @@ export default function App() {
         </div>
 
         <div style={styles.status}>
-          ● ONLINE
+          ● {status}
+          <button onClick={newChat} disabled={loading} style={{ marginLeft: 12 }}>New chat</button>
         </div>
       </header>
 
@@ -149,6 +177,7 @@ export default function App() {
             ODB is thinking...
           </div>
         )}
+        <div ref={bottom} />
       </main>
 
       <footer style={styles.inputArea}>
@@ -160,12 +189,14 @@ export default function App() {
           onKeyDown={handleKeyDown}
           placeholder="Talk to ODB..."
           style={styles.input}
+          aria-label="Message ODB"
+          maxLength={12000}
           rows={2}
         />
 
         <button
           onClick={sendMessage}
-          disabled={loading}
+          disabled={loading || !input.trim()}
           style={styles.button}
         >
           SEND

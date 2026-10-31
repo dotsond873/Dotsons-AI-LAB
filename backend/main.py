@@ -2,7 +2,12 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
+from openai import APIError
+import logging
+import uuid
 
 from core.memory import memory
 from core.router import router
@@ -62,8 +67,8 @@ app.add_middleware(
 provider = GroqCloudProvider()
 
 class ChatRequest(BaseModel):
-    message: str
-    session_id: str = "default"
+    message: str = Field(min_length=1, max_length=12000)
+    session_id: str = Field(default_factory=lambda: str(uuid.uuid4()), pattern=r"^[A-Za-z0-9_-]{16,100}$")
 
 
 class ChatResponse(BaseModel):
@@ -112,14 +117,14 @@ ODB SHADY 6.9:
 """
 
 
-@app.get("/")
+@app.get("/api")
 async def root():
     return {
         "name": APP_NAME,
         "company": "Dotson Labs",
         "status": "online",
         "version": APP_VERSION,
-        "engine": "local",
+        "engine": provider.name,
         "model": provider.model,
     }
 
@@ -128,6 +133,7 @@ async def root():
 async def health():
     return {
         "status": "healthy",
+        "provider_ready": provider.client is not None,
         "name": APP_NAME,
         "version": APP_VERSION,
         "timestamp": datetime.now(
@@ -169,6 +175,10 @@ async def roles():
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
+    if not request.message.strip():
+        raise HTTPException(status_code=422, detail="Enter a message.")
+    if provider.client is None:
+        raise HTTPException(status_code=503, detail="Chat needs GROQ_API_KEY configured on the server.")
     try:
         capability = router.route(request.message)
 
@@ -202,11 +212,12 @@ async def chat(request: ChatRequest):
             ).isoformat(),
         )
 
+    except APIError as exc:
+        logging.getLogger(__name__).warning("Chat provider failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="The chat provider could not respond. Check its key, model, and quota, then try again.") from exc
     except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=str(exc),
-        ) from exc
+        logging.getLogger(__name__).exception("Chat failed")
+        raise HTTPException(status_code=500, detail="Chat could not complete. Please try again.") from exc
 
 
 @app.get("/memory/{session_id}")
@@ -230,3 +241,9 @@ async def clear_memory(session_id: str):
         "session_id": session_id,
         "cleared": cleared,
     }
+
+
+# Mount after API routes so one Render service can serve the chat interface.
+frontend_dist = Path(__file__).resolve().parents[1] / "frontend" / "dist"
+if frontend_dist.is_dir():
+    app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")

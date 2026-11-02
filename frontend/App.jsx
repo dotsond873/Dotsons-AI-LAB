@@ -15,6 +15,7 @@ export default function App() {
 
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [webSearch, setWebSearch] = useState(false);
 
   const sessionId = "odb-default-session";
 
@@ -43,6 +44,7 @@ export default function App() {
   body: JSON.stringify({
     message: text,
     session_id: sessionId,
+    web_search: webSearch,
   }),
 });
 
@@ -60,6 +62,8 @@ export default function App() {
           role: "assistant",
           text: data.response,
           capability: data.capability,
+          sources: data.sources || [],
+          searchStatus: data.search_status,
         },
       ]);
     } catch (error) {
@@ -131,6 +135,18 @@ export default function App() {
   )}
 </div>
 
+            {message.sources?.length > 0 && (
+              <div>
+                <strong>Web sources</strong>
+                <ul>{message.sources.map((source) => (
+                  <li key={source.url}>
+                    <a href={source.url} target="_blank" rel="noopener noreferrer" style={{ color: "#7ccfff" }}>{source.title}</a>
+                  </li>
+                ))}</ul>
+              </div>
+            )}
+            {message.searchStatus === "no_results" && <p>No web results found.</p>}
+
             {message.capability && (
               <div style={styles.capability}>
                 mode: {message.capability}
@@ -151,6 +167,11 @@ export default function App() {
         )}
       </main>
 
+      <label style={{ padding: "12px 20px" }}>
+        <input type="checkbox" checked={webSearch} disabled={loading}
+          onChange={(event) => setWebSearch(event.target.checked)} />
+        {" "}Search the web for this answer
+      </label>
       <footer style={styles.inputArea}>
         <textarea
           value={input}

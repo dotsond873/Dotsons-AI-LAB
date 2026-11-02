@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException
@@ -136,7 +137,22 @@ async def root():
 
 @app.get("/health")
 async def health():
+    key_name = "SERPAPI_API_KEY"
+    key_present = key_name in os.environ
+    key_has_value = bool(os.getenv(key_name, "").strip())
+    # Report only booleans; never return credentials or environment contents.
+    similar_name_present = any(
+        name != key_name and name.strip().upper().replace(" ", "") == key_name
+        for name in os.environ
+    )
     return {
+        "diagnostic_version": 1,
+        "deployment_commit": os.getenv("RENDER_GIT_COMMIT", "unknown"),
+        "web_search": {
+            "key_present": key_present,
+            "key_has_value": key_has_value,
+            "similar_name_present": similar_name_present,
+        },
         "status": "healthy",
         "name": APP_NAME,
         "version": APP_VERSION,

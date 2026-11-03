@@ -146,7 +146,7 @@ export default function App() {
 
             <div style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>
   {message.role === "assistant" ? (
-    <div style={{ overflowX: "auto" }}>
+    <div className="chat-markdown" style={{ overflowX: "auto" }}>
       <ReactMarkdown remarkPlugins={[remarkGfm]}>
         {message.text}
       </ReactMarkdown>
@@ -162,6 +162,7 @@ export default function App() {
                 <ul>{message.sources.map((source) => (
                   <li key={source.url}>
                     <a href={source.url} target="_blank" rel="noopener noreferrer" style={{ color: "#7ccfff" }}>{source.title}</a>
+                    <small style={{ display: "block", color: "#aaa", marginTop: "4px" }}>{source.page_status === "read" ? "Page excerpt retrieved" : "Search summary only"}{source.date ? ` · ${source.date}` : " · Publication date not provided"}</small>
                   </li>
                 ))}</ul>
               </div>
@@ -334,6 +335,11 @@ const styles = {
 };
 
 const landingCss = `
+.chat-markdown a { color:#7ccfff; text-underline-offset:3px; }
+.chat-markdown table { min-width:560px; border-collapse:collapse; overflow-wrap:normal; word-break:normal; }
+.chat-markdown td,.chat-markdown th { padding:10px; text-align:left; border-bottom:1px solid #444; min-width:130px; }
+.chat-markdown p,.chat-markdown li { line-height:1.65; }
+@media(max-width:650px) { .chat-markdown { font-size:16px; } }
 body { margin: 0; background: #080d10; }
 .lab-entrance { min-height: 100svh; position: relative; isolation: isolate; overflow: hidden; background: #080d10; color: #f1f4f2; font-family: Arial, Helvetica, sans-serif; display: flex; flex-direction: column; }
 .lab-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 65% center; z-index: -3; }

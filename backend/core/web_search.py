@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from urllib.parse import urlparse
 import httpx
+from core.local_news import is_decatur_news, news_search_params, relevant_local_result
 
 
 class SearchUnavailable(Exception):
@@ -65,11 +66,17 @@ async def search_web(query: str) -> list[dict[str, str]]:
     query = query.strip()
     if not query or len(query) > 2000:
         raise SearchUnavailable("Web search needs a query between 1 and 2,000 characters.", 400)
+    local_news = is_decatur_news(query)
+    params = {"engine": "google", "q": dated_query(query), "api_key": key, "hl": "en", "gl": "us"}
+    local_params = news_search_params(query)
+    if local_params:
+        local_params["q"] = dated_query(local_params["q"])
+        params.update(local_params)
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.get(
                 "https://serpapi.com/search.json",
-                params={"engine": "google", "q": dated_query(query), "api_key": key, "hl": "en", "gl": "us"},
+                params=params,
             )
         if response.status_code in (401, 403):
             raise SearchUnavailable("Web search credentials were rejected. Check SERPAPI_API_KEY.", 503)
@@ -89,6 +96,8 @@ async def search_web(query: str) -> list[dict[str, str]]:
     sources = []
     for result in results:
         if not isinstance(result, dict):
+            continue
+        if local_news and not relevant_local_result(result):
             continue
         url = result.get("link")
         if not isinstance(url, str):

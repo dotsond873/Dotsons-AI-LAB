@@ -122,6 +122,16 @@ Prefer official sources and match the requested date and year exactly.
 Do not call an old event upcoming or assume a date from a different season.
 If the evidence is incomplete, say exactly what is missing; never invent the answer.
 Fresh search evidence takes precedence over outdated statements in conversation history.
+For news, use a short numbered list: linked headline, brief summary, and source date if known.
+Do not use a table for news roundups.
+For a location-specific request, include only stories about that location or its immediate area.
+A local publisher's national/world coverage is not local news. Never pad a local list with it.
+Ignore unrelated headlines in page navigation, recommendations, sidebars, or wire-service lists.
+If only one relevant story is supported, give only one; explain the coverage is limited.
+A search date or today's date does not prove when an article was published.
+Never claim every article is from today without an explicit supporting publication date.
+When only snippets are available, label the summary "Search summary"; page_status=read means
+a page excerpt was retrieved, not necessarily the full article. Never claim full-article access.
 
 CONVERSATION HISTORY:
 {history_text}

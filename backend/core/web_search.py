@@ -77,6 +77,13 @@ async def search_web(query: str) -> list[dict[str, str]]:
                 "https://serpapi.com/search.json",
                 params=params,
             )
+            # Some upstream News requests fail even when ordinary search works.
+            # Retry once without tbm; publication-date filtering still applies.
+            if local_news and response.status_code not in (200, 401, 403, 429):
+                fallback_params = {k: v for k, v in params.items() if k != "tbm"}
+                response = await client.get(
+                    "https://serpapi.com/search.json", params=fallback_params,
+                )
         if response.status_code in (401, 403):
             raise SearchUnavailable("Web search credentials were rejected. Check SERPAPI_API_KEY.", 503)
         if response.status_code == 429:
@@ -89,7 +96,7 @@ async def search_web(query: str) -> list[dict[str, str]]:
         raise SearchUnavailable("Web search is temporarily unavailable.") from None
     if not isinstance(data, dict) or data.get("error"):
         raise SearchUnavailable("Web search failed. Check your SerpApi account status.")
-    results = data.get("news_results" if local_news else "organic_results", [])
+    results = data.get("news_results", data.get("organic_results", [])) if local_news else data.get("organic_results", [])
     if not isinstance(results, list):
         raise SearchUnavailable("Web search returned an unexpected response.")
     sources = []

@@ -18,6 +18,7 @@ export default function App() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [streaming, setStreaming] = useState(false);
+  const [activity, setActivity] = useState("Shady is thinking…");
   const [webSearch, setWebSearch] = useState(null);
   const sending = useRef(false);
   const chatScroll = useRef(null);
@@ -108,6 +109,7 @@ export default function App() {
     setInput("");
     setLoading(true);
     setStreaming(false);
+    setActivity("Connecting to Shady…");
     try {
       const response = await fetch(`${API_URL}/chat`, {
         method:"POST", headers:{"Content-Type":"application/json"},
@@ -119,7 +121,9 @@ export default function App() {
       }
       if ((response.headers.get("content-type") || "").includes("application/x-ndjson")) {
         await readAnswerStream(response, event => {
-          if (event.type === "meta") {
+          if (event.type === "status") {
+            setActivity(event.stage === "searching" ? "Searching the web…" : "Shady is thinking…");
+          } else if (event.type === "meta") {
             started = true;
             setStreaming(true);
             setConversations(old => appendMessage(old, targetId, {
@@ -262,7 +266,7 @@ export default function App() {
           <div
             className="chat-message odb-message thinking" role="status"
           >
-            ODB is thinking...
+            {activity}
           </div>
         )}
       </main>

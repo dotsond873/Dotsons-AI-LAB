@@ -73,7 +73,8 @@ class ErrorTests(unittest.TestCase):
         with patch.object(main, 'build_prompt', side_effect=RuntimeError('secret-key')):
             response = TestClient(main.app).post('/chat', json={
                 'message':'hello', 'stream':True, 'web_search':False})
-        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('"type": "error"', response.text)
         self.assertNotIn('secret-key', response.text)
 
 

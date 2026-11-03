@@ -15,6 +15,12 @@ test("disconnection and server error are surfaced",async()=>{
   await assert.rejects(()=>readAnswerStream(response('{"type":"delta","text":"Partial"}\n'),()=>{}),/before Shady finished/);
   await assert.rejects(()=>readAnswerStream(response('{"type":"error","message":"Try again"}\n'),()=>{}),/Try again/);
 });
+test("progress statuses arrive before answer text",async()=>{
+  const seen=[];
+  await readAnswerStream(response('{"type":"status","stage":"searching"}\n{"type":"status","stage":"thinking"}\n{"type":"meta"}\n{"type":"delta","text":"Answer"}\n{"type":"done"}\n'),e=>seen.push(e));
+  assert.deepEqual(seen.map(e=>e.type),["status","status","meta","delta","done"]);
+  assert.equal(seen[0].stage,"searching");
+});
 test("updates one assistant message and excludes interrupted saved replies",()=>{
   let state=freshState(), id=state.activeId;
   state=appendMessage(state,id,{id:"reply",role:"assistant",text:"",incomplete:true});

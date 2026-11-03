@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from core.streaming import answer_events
+from core.streaming import answer_events, event
 from pydantic import BaseModel, Field
 from typing import Literal
 from core.web_search import SearchUnavailable, search_web, dated_query
@@ -248,39 +248,61 @@ async def roles():
 
 
 
+async def prepare_chat(request, capability):
+    sources = []
+    search_status = "not_requested"
+    search_context = ""
+    use_search = should_search(request.message, request.web_search)
+    if use_search:
+        try:
+            sources = await search_web(request.message)
+        except SearchUnavailable as exc:
+            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
+        search_status = "completed" if sources else "no_results"
+        import json
+        search_context = json.dumps(sources, ensure_ascii=False) if sources else "Search returned no usable results matching this request and its date constraints. Say so; do not invent sources or reuse old stories from conversation history. This does not prove that no news exists."
+
+    prompt = build_prompt(
+        message=(dated_query(request.message) if use_search else request.message),
+        session_id=request.session_id,
+        capability=capability,
+        search_context=search_context,
+        style=request.personality,
+        history=([item.model_dump() for item in request.history] if request.history is not None else None),
+    )
+    return prompt, sources, search_status
+
+
+async def chat_events(request, capability):
+    try:
+        searching = should_search(request.message, request.web_search)
+        yield event({"type": "status", "stage": "searching" if searching else "thinking"})
+        prompt, sources, search_status = await prepare_chat(request, capability)
+        if searching:
+            yield event({"type": "status", "stage": "thinking"})
+        from contextlib import aclosing
+        async with aclosing(answer_events(provider, prompt, request, capability, sources, search_status, memory)) as events:
+            async for record in events:
+                yield record
+    except HTTPException as exc:
+        yield event({"type": "error", "message": exc.detail, "status_code": exc.status_code})
+    except Exception:
+        yield event({"type": "error", "message": "Shady couldn't complete this request. Please try again."})
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     try:
         capability = router.route(request.message)
 
-        sources = []
-        search_status = "not_requested"
-        search_context = ""
-        use_search = should_search(request.message, request.web_search)
-        if use_search:
-            try:
-                sources = await search_web(request.message)
-            except SearchUnavailable as exc:
-                raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
-            search_status = "completed" if sources else "no_results"
-            import json
-            search_context = json.dumps(sources, ensure_ascii=False) if sources else "Search returned no usable results matching this request and its date constraints. Say so; do not invent sources or reuse old stories from conversation history. This does not prove that no news exists."
-
-        prompt = build_prompt(
-            message=(dated_query(request.message) if use_search else request.message),
-            session_id=request.session_id,
-            capability=capability,
-            search_context=search_context,
-            style=request.personality,
-            history=([item.model_dump() for item in request.history] if request.history is not None else None),
-        )
-
         if request.stream:
             return StreamingResponse(
-                answer_events(provider, prompt, request, capability, sources, search_status, memory),
+                chat_events(request, capability),
                 media_type="application/x-ndjson",
                 headers={"Cache-Control":"no-cache, no-transform", "X-Accel-Buffering":"no"},
             )
+
+        prompt, sources, search_status = await prepare_chat(request, capability)
 
         response = await provider.generate(prompt)
 

@@ -1,8 +1,9 @@
+export const PERSONALITIES = ["shady", "professional", "direct"];
 export const STORAGE_KEY = "odb-conversations-v1";
 export const GREETING = "ODB SHADY 6.9 online. What kind of trouble are we getting into?";
 
 export function newConversation() {
-  return { id: crypto.randomUUID(), title: "New chat", updatedAt: new Date().toISOString(),
+  return { id: crypto.randomUUID(), title: "New chat", personality:"shady", updatedAt: new Date().toISOString(),
     messages: [{ role: "assistant", text: GREETING, greeting: true }] };
 }
 
@@ -35,7 +36,7 @@ export function loadConversations(storage) {
     const chats = saved.chats.filter(c => c && typeof c.id === "string" && /^[a-zA-Z0-9-]{10,100}$/.test(c.id) && Array.isArray(c.messages))
       .filter(c => { if (ids.has(c.id)) return false; ids.add(c.id); return true; })
       .map(c => ({ id: c.id, title: typeof c.title === "string" ? c.title.slice(0, 80) : "Saved chat",
-        updatedAt: c.updatedAt || "", messages: c.messages.map(safeMessage).filter(Boolean).map(m => m.incomplete ? { ...m, incomplete:false, error:true, text:(m.text || "") + "\n\nResponse interrupted before completion." } : m) }));
+        updatedAt: c.updatedAt || "", personality: PERSONALITIES.includes(c.personality) ? c.personality : "shady", messages: c.messages.map(safeMessage).filter(Boolean).map(m => m.incomplete ? { ...m, incomplete:false, error:true, text:(m.text || "") + "\n\nResponse interrupted before completion." } : m) }));
     if (!chats.length) return freshState();
     return { version: 1, chats, activeId: chats.some(c => c.id === saved.activeId) ? saved.activeId : chats[0].id, notice: "" };
   } catch {
@@ -77,4 +78,9 @@ export function updateMessage(state, chatId, messageId, patch) {
     ...chat, messages: chat.messages.map(message => message.id === messageId
       ? safeMessage({ ...message, ...patch }) : message)
   }) };
+}
+
+export function setPersonality(state, chatId, personality) {
+  if (!PERSONALITIES.includes(personality)) return state;
+  return { ...state, chats: state.chats.map(chat => chat.id === chatId ? { ...chat, personality } : chat) };
 }

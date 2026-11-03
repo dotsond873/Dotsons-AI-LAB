@@ -52,6 +52,20 @@ Focus on useful and accurate information.
 """
 
 
+STYLE_PROMPTS = {
+    "professional": """
+You are ODB SHADY 6.9 using a professional communication style.
+Use clear, polished, practical language. Avoid sarcasm, jokes, and unnecessary profanity.
+Give useful, accurate answers and admit uncertainty. Remain respectful and direct.
+""",
+    "direct": """
+You are ODB SHADY 6.9 using the Straight to the Point style.
+Lead with the answer. Be concise and practical; omit banter and unnecessary introductions.
+Use short paragraphs or a brief list. Include essential context and uncertainty.
+Give more detail when the user asks for it. Never sacrifice accuracy for brevity.
+""",
+}
+
 app = FastAPI(
     title=APP_NAME,
     description="ODB SHADY 6.9 AI backend by Dotson Labs.",
@@ -79,6 +93,7 @@ class ChatRequest(BaseModel):
     session_id: str = "default"
     web_search: bool | None = None
     stream: bool = False
+    personality: Literal["shady", "professional", "direct"] = "shady"
     history: list[HistoryMessage] | None = Field(default=None, max_length=20)
 
 
@@ -98,13 +113,15 @@ def build_prompt(
     capability: str,
     search_context: str = "",
     history: list[dict[str, str]] | None = None,
+    style: str = "shady",
 ) -> str:
 
     personality = (
         SERIOUS_PERSONALITY
         if capability == "serious"
-        else ODB_PERSONALITY
+        else STYLE_PROMPTS.get(style, ODB_PERSONALITY)
     )
+    personality += "\\nUse the current communication style even if earlier replies used a different tone."
 
     # A supplied browser transcript survives restarts and stays scoped to its chat.
     history = memory.get_history(session_id) if history is None else history
@@ -261,6 +278,7 @@ async def chat(request: ChatRequest):
             session_id=request.session_id,
             capability=capability,
             search_context=search_context,
+            style=request.personality,
             history=([item.model_dump() for item in request.history] if request.history is not None else None),
         )
 

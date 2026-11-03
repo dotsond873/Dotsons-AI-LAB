@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useRef } from "react";
-import { loadConversations, saveConversations, newConversation, appendMessage, updateMessage, deleteConversation, requestHistory } from "./conversations.mjs";
+import { loadConversations, saveConversations, newConversation, appendMessage, updateMessage, deleteConversation, requestHistory, setPersonality } from "./conversations.mjs";
 import { readAnswerStream } from "./answer-stream.mjs";
 import labArt from "./assets/odb-lab-v2.webp";
 import ReactMarkdown from "react-markdown";
@@ -111,7 +111,7 @@ export default function App() {
     try {
       const response = await fetch(`${API_URL}/chat`, {
         method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({ message:text, session_id:targetId, web_search:webSearch, history, stream:true }),
+        body:JSON.stringify({ message:text, session_id:targetId, web_search:webSearch, history, stream:true, personality:activeChat.personality || "shady" }),
       });
       if (!response.ok) {
         const error = await response.json();
@@ -269,6 +269,7 @@ export default function App() {
 
       <div className="composer-dock">
       {showJump && <button className="jump-latest" onClick={jumpToLatest}>↓ Latest messages</button>}
+      <div className="composer-controls">
       <label className="search-control">
         Web search:{" "}
         <select aria-label="Web search mode" value={webSearch === null ? "auto" : webSearch ? "on" : "off"} disabled={loading}
@@ -279,6 +280,16 @@ export default function App() {
           <option value="off">Search off</option>
         </select>
       </label>
+      <label className="search-control">
+        Personality:{" "}
+        <select aria-label="Shady personality" disabled={loading} value={activeChat.personality || "shady"}
+          onChange={event => setConversations(old => setPersonality(old, activeChat.id, event.target.value))}>
+          <option value="shady">Shady</option>
+          <option value="professional">Professional</option>
+          <option value="direct">Straight to the Point</option>
+        </select>
+      </label>
+      </div>
       <footer className="input-area">
         <textarea
           ref={inputBox}
@@ -307,6 +318,9 @@ export default function App() {
   );
 }
 const landingCss = `
+.composer-controls { display:flex; flex-wrap:wrap; column-gap:20px; row-gap:0; align-items:center; }
+@media(max-width:650px) { .composer-controls { column-gap:12px; } .composer-controls .search-control { flex-wrap:wrap; gap:5px; margin-bottom:8px; } .composer-controls .search-control select { font-size:14px; min-height:38px; } }
+
 .chat-page { --ink:#f1f4f2; --muted:#a8bdc1; --mint:#b0f2e9; --line:#24434b; height:100dvh; height:100svh; height:100dvh; display:flex; flex-direction:column; color:var(--ink); background:radial-gradient(ellipse at 85% 0%,#102a36 0%,#080d10 58%); font-family:Arial,Helvetica,sans-serif; overflow:hidden; }
 .chat-header { flex-shrink:0; display:flex; justify-content:space-between; align-items:center; padding:18px 24px; background:#080f14e8; border-bottom:1px solid var(--line); }
 .chat-logo { font-size:23px; font-weight:900; letter-spacing:2px; }

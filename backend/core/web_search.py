@@ -1,5 +1,9 @@
 """Server-side SerpApi search with sanitized errors."""
 import os
+import asyncio
+import re
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from urllib.parse import urlparse
 import httpx
 
@@ -8,6 +12,50 @@ class SearchUnavailable(Exception):
     def __init__(self, message: str, status_code: int = 502):
         super().__init__(message)
         self.status_code = status_code
+
+
+def dated_query(query: str, today=None) -> str:
+    """Resolve relative dates before searching; preserve explicit years."""
+    today = today or datetime.now(ZoneInfo("America/Chicago")).date()
+    days = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+    def weekday(match):
+        target = days.index(match.group(1).lower())
+        offset = (target - today.weekday()) % 7 or 7
+        return (today + timedelta(days=offset)).strftime("%B %d, %Y")
+    # Leave explicit historical dates and bare weekdays unchanged.
+    query = re.sub(r"\b(?:next|this)\s+(" + "|".join(days) + r")\b", weekday, query, flags=re.I)
+    if not re.search(r"\b20\d{2}\b", query) and not re.search(r"\blast\b", query, re.I):
+        query = re.sub(r"\b(" + "|".join(days) + r")\b", weekday, query, flags=re.I)
+    for label, offset in (("tomorrow", 1), ("today", 0), ("yesterday", -1)):
+        query = re.sub(r"\b" + label + r"\b", (today + timedelta(days=offset)).strftime("%B %d, %Y"), query, flags=re.I)
+    if not re.search(r"\b20\d{2}\b", query) and re.search(r"\b(next|current|latest|recent|schedule)\b", query, re.I):
+        query += f" {today.year}"
+    return query
+
+
+async def read_page(client, source, key):
+    """Read at most two search-result pages through SerpApi, never local URLs."""
+    parsed = urlparse(source["url"])
+    if parsed.username or parsed.password or not parsed.hostname or "." not in parsed.hostname:
+        source["page_status"] = "unavailable"
+        return
+    try:
+        response = await client.get(
+            "https://serpapi.com/search.md",
+            params={"engine": "extract", "mode": "scrape", "url": source["url"],
+                    "api_key": key, "output": "md", "timeout": 10000},
+            timeout=12.0,
+        )
+        response.raise_for_status()
+        content = response.text.strip()
+        content_type = response.headers.get("content-type", "")
+        if not content or "json" in content_type or content.startswith(("{", "<!DOCTYPE", "<html")):
+            source["page_status"] = "unavailable"
+            return
+        source["page_text"] = content[:18000]
+        source["page_status"] = "read"
+    except (httpx.HTTPError, ValueError):
+        source["page_status"] = "unavailable"
 
 
 async def search_web(query: str) -> list[dict[str, str]]:
@@ -21,7 +69,7 @@ async def search_web(query: str) -> list[dict[str, str]]:
         async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.get(
                 "https://serpapi.com/search.json",
-                params={"engine": "google", "q": query, "api_key": key, "hl": "en", "gl": "us"},
+                params={"engine": "google", "q": dated_query(query), "api_key": key, "hl": "en", "gl": "us"},
             )
         if response.status_code in (401, 403):
             raise SearchUnavailable("Web search credentials were rejected. Check SERPAPI_API_KEY.", 503)
@@ -52,7 +100,11 @@ async def search_web(query: str) -> list[dict[str, str]]:
             "title": str(result.get("title") or url)[:300],
             "url": url,
             "snippet": str(result.get("snippet") or "")[:1500],
+            "date": str(result.get("date") or ""),
+            "page_status": "not_read",
         })
         if len(sources) == 5:
             break
+    async with httpx.AsyncClient(timeout=12.0) as client:
+        await asyncio.gather(*(read_page(client, source, key) for source in sources[:2]))
     return sources

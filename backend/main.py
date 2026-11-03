@@ -11,7 +11,7 @@ from typing import Literal
 from core.web_search import SearchUnavailable, search_web, dated_query
 
 from core.search_policy import should_search
-from core.prompt_budget import MAX_PROMPT_BYTES, clip_utf8, fit_search_context
+from core.prompt_budget import MAX_PROMPT_BYTES, fit_history, fit_search_context
 from core.memory import memory
 from core.router import router
 
@@ -128,14 +128,6 @@ def build_prompt(
 
     history_text = ""
 
-    for item in history[-20:]:
-        role = item.get("role", "user")
-        content = item.get("content", "")
-
-        history_text += (
-            f"\n{role.upper()}: {content}"
-        )
-
     def render():
         return f"""
 SYSTEM:
@@ -173,14 +165,15 @@ USER:
 ODB SHADY 6.9:
 """
 
-    history_text = history_text.encode("utf-8")[-600:].decode("utf-8", errors="ignore")
     fixed_context = search_context
     search_context = ""
-    if len(render().encode("utf-8")) > MAX_PROMPT_BYTES:
-        history_text = ""
     available = MAX_PROMPT_BYTES - len(render().encode("utf-8"))
     if available < 0:
         raise HTTPException(status_code=413, detail="That message is too long. Please split it into smaller messages.")
+    # Reserve room for fresh evidence while allowing substantially more history.
+    search_reserve = min(1000, available) if fixed_context else 0
+    history_text = fit_history(history, available - search_reserve)
+    available = MAX_PROMPT_BYTES - len(render().encode("utf-8"))
     search_context = fit_search_context(fixed_context, available)
     return render()
 
@@ -317,11 +310,11 @@ async def chat(request: ChatRequest):
 
     except HTTPException:
         raise
-    except Exception as exc:
+    except Exception:
         raise HTTPException(
             status_code=500,
-            detail=str(exc),
-        ) from exc
+            detail="Shady couldn't complete this request. Please try again.",
+        ) from None
 
 
 @app.get("/memory/{session_id}")

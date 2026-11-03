@@ -2,6 +2,23 @@
 import json
 
 MAX_PROMPT_BYTES = 6000
+MAX_HISTORY_BYTES = 2400
+
+def fit_history(history, limit):
+    """Keep recent complete messages rather than slicing through a transcript."""
+    parts = []
+    remaining = max(0, min(limit, MAX_HISTORY_BYTES))
+    for item in reversed(history[-20:]):
+        part = f"\n{item.get('role', 'user').upper()}: {item.get('content', '')}"
+        size = len(part.encode("utf-8"))
+        if size > remaining:
+            # Keep a useful prefix of an oversized newest message with its role.
+            if not parts and remaining:
+                parts.append(clip_utf8(part, remaining))
+            break
+        parts.append(part)
+        remaining -= size
+    return "".join(reversed(parts))
 
 def clip_utf8(text, limit):
     return str(text).encode("utf-8")[:max(0, limit)].decode("utf-8", errors="ignore")

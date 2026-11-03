@@ -5,22 +5,37 @@ from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from zoneinfo import ZoneInfo
 
-LOCAL_OUTLETS = ("decaturdaily.com", "whnt.com", "waff.com", "waaytv.com", "rocketcitynow.com")
+OUTLETS = {
+    "decatur": ("decaturdaily.com", "whnt.com", "waff.com", "waaytv.com", "rocketcitynow.com"),
+    "birmingham": ("al.com", "wbrc.com", "wvtm13.com", "cbs42.com", "abc3340.com", "birminghamtimes.com"),
+}
+
+def local_news_city(query):
+    if not re.search(r"\b(news|headlines?|stories)\b", query, re.I):
+        return None
+    if re.search(r"\b(world|national|international)\s+(news|headlines?)\b", query, re.I):
+        return None
+    match = re.search(r"\b(?:in|from|for|about)\s+([a-z][a-z .'-]{1,45}?),?\s+(?:alabama|al)\b", query, re.I)
+    if not match:
+        match = re.search(r"^([a-z][a-z .'-]{1,45}?),?\s+(?:alabama|al)\b", query, re.I)
+    if not match:
+        return None
+    city = re.sub(r"^(?:(?:latest|local|current|recent|today's|todays|today)\s+)+", "", match.group(1), flags=re.I)
+    return city.strip().lower()
+
+def is_local_news(query):
+    return local_news_city(query) is not None
 
 def is_decatur_news(query):
-    return bool(re.search(r"\bdecatur\b", query, re.I)
-                and re.search(r"\b(alabama|al)\b", query, re.I)
-                and re.search(r"\b(news|headlines?|stories)\b", query, re.I)
-                and not re.search(r"\b(world|national|international)\s+(news|headlines?)\b", query, re.I))
+    return local_news_city(query) == "decatur"
 
 def news_search_params(query):
-    if not is_decatur_news(query):
+    if not is_local_news(query):
         return {}
-    outlets = " OR ".join("site:" + host for host in LOCAL_OUTLETS)
-    # Use News results rather than matching dates as words on ordinary pages.
-    clean = re.sub(r"\b(today(?:'s)?|tonight|latest|current)\b", "", query, flags=re.I)
-    params = {"q": clean + " local reporting (" + outlets + ")", "tbm": "nws"}
-    if re.search(r"\b(today|tonight)\b", query, re.I):
+    topic = re.split(r"[.!?]", query)[0]
+    topic = re.sub(r"\b(today(?:'s|s)?|tonight|latest|current|recent)\b", "", topic, flags=re.I)
+    params = {"q": topic.strip(), "tbm": "nws"}
+    if re.search(r"\b(today(?:'s|s)?|tonight)\b", query, re.I):
         params["tbs"] = "qdr:d"
     elif re.search(r"\b(latest|current|recent)\b", query, re.I):
         params["tbs"] = "qdr:w"
@@ -58,7 +73,7 @@ def article_time(value, now):
 def fresh_local_result(result, query, now=None):
     """Require dated evidence for today's/latest news; never relabel archive stories."""
     now = now or datetime.now(ZoneInfo("America/Chicago"))
-    if re.search(r"\b(today|tonight)\b", query, re.I):
+    if re.search(r"\b(today(?:'s|s)?|tonight)\b", query, re.I):
         cutoff = now.replace(hour=0, minute=0, second=0, microsecond=0)
     elif re.search(r"\b(latest|current|recent)\b", query, re.I):
         cutoff = now - timedelta(days=7)
@@ -69,19 +84,20 @@ def fresh_local_result(result, query, now=None):
     return bool(dates) and all(cutoff <= date <= now for date in dates)
 
 
-def relevant_local_result(result):
-    title = str(result.get("title") or "")
-    snippet = str(result.get("snippet") or "")
-    url = str(result.get("link") or "")
-    parsed = urlparse(url)
+def relevant_local_result(result, query="Decatur Alabama news"):
+    city = local_news_city(query)
+    if not city:
+        return True
+    parsed = urlparse(str(result.get("link") or ""))
     host = (parsed.hostname or "").lower()
-    if not any(host == outlet or host.endswith("." + outlet) for outlet in LOCAL_OUTLETS):
+    outlets = OUTLETS.get(city, ())
+    if outlets and not any(host == outlet or host.endswith("." + outlet) for outlet in outlets):
         return False
-    # A newspaper homepage includes unrelated wire stories; require an article.
     path = parsed.path.rstrip("/")
-    if not path or path.lower() in ("/news", "/news/local", "/local", "/sports"):
+    if not path or path.lower() in ("/news", "/news/local", "/local", "/sports", "/" + city):
         return False
-    evidence = title + " " + snippet
-    if re.search(r"\bdecatur[, ]+(illinois|georgia|indiana|texas|il|ga|in|tx)\b", evidence, re.I):
+    evidence = str(result.get("title") or "") + " " + str(result.get("snippet") or "")
+    if re.search(r"\b" + re.escape(city) + r"[, ]+(illinois|georgia|indiana|texas|michigan|england|uk|il|ga|tx|mi)\b", evidence, re.I):
         return False
-    return bool(re.search(r"\b(decatur|morgan county)\b", evidence, re.I))
+    names = [city] + (["morgan county"] if city == "decatur" else [])
+    return any(re.search(r"\b" + re.escape(name) + r"\b", evidence, re.I) for name in names)

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from urllib.parse import urlparse
 import httpx
-from core.local_news import is_decatur_news, news_search_params, relevant_local_result, fresh_local_result
+from core.local_news import is_local_news, news_search_params, relevant_local_result, fresh_local_result
 
 
 class SearchUnavailable(Exception):
@@ -53,7 +53,7 @@ async def read_page(client, source, key):
         if not content or "json" in content_type or content.startswith(("{", "<!DOCTYPE", "<html")):
             source["page_status"] = "unavailable"
             return
-        source["page_text"] = content[:18000]
+        source["page_text"] = content[:1800]
         source["page_status"] = "read"
     except (httpx.HTTPError, ValueError):
         source["page_status"] = "unavailable"
@@ -66,7 +66,7 @@ async def search_web(query: str) -> list[dict[str, str]]:
     query = query.strip()
     if not query or len(query) > 2000:
         raise SearchUnavailable("Web search needs a query between 1 and 2,000 characters.", 400)
-    local_news = is_decatur_news(query)
+    local_news = is_local_news(query)
     params = {"engine": "google", "q": dated_query(query), "api_key": key, "hl": "en", "gl": "us"}
     local_params = news_search_params(query)
     if local_params:
@@ -79,7 +79,15 @@ async def search_web(query: str) -> list[dict[str, str]]:
             )
             # Some upstream News requests fail even when ordinary search works.
             # Retry once without tbm; publication-date filtering still applies.
-            if local_news and response.status_code not in (200, 401, 403, 429):
+            news_empty = False
+            if local_news and response.status_code == 200:
+                news_data = response.json()
+                if isinstance(news_data, dict):
+                    news_error = str(news_data.get("error", ""))
+                    news_empty = (not news_error and not news_data.get("news_results")) or bool(
+                        re.search(r"(?:hasn.t returned any results|no (?:search )?results (?:were )?found|returned no results)", news_error, re.I)
+                    )
+            if local_news and (response.status_code not in (200, 401, 403, 429) or news_empty):
                 fallback_params = {k: v for k, v in params.items() if k != "tbm"}
                 response = await client.get(
                     "https://serpapi.com/search.json", params=fallback_params,
@@ -103,7 +111,7 @@ async def search_web(query: str) -> list[dict[str, str]]:
             return []
         # Expose a bounded explanation, never the credential or full request URL.
         safe_error = error.replace(key, "[redacted]")
-        safe_error = re.sub(r"https?://\\S+", "[provider URL]", safe_error)
+        safe_error = re.sub(r"https?://\S+", "[provider URL]", safe_error)
         raise SearchUnavailable("Search provider: " + safe_error[:240])
     results = data.get("news_results", data.get("organic_results", [])) if local_news else data.get("organic_results", [])
     if not isinstance(results, list):
@@ -112,7 +120,7 @@ async def search_web(query: str) -> list[dict[str, str]]:
     for result in results:
         if not isinstance(result, dict):
             continue
-        if local_news and (not relevant_local_result(result) or not fresh_local_result(result, query)):
+        if local_news and (not relevant_local_result(result, query) or not fresh_local_result(result, query)):
             continue
         url = result.get("link")
         if not isinstance(url, str):

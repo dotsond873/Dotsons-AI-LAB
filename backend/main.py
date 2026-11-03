@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from core.web_search import SearchUnavailable, search_web, dated_query
 
 from core.search_policy import should_search
+from core.prompt_budget import MAX_PROMPT_BYTES, clip_utf8, fit_search_context
 from core.memory import memory
 from core.router import router
 
@@ -106,7 +107,8 @@ def build_prompt(
             f"\n{role.upper()}: {content}"
         )
 
-    return f"""
+    def render():
+        return f"""
 SYSTEM:
 {personality}
 Current local date: {datetime.now(ZoneInfo("America/Chicago")).strftime("%Y-%m-%d")} (America/Chicago).
@@ -141,6 +143,17 @@ USER:
 
 ODB SHADY 6.9:
 """
+
+    history_text = clip_utf8(history_text[-2000:], 600)
+    fixed_context = search_context
+    search_context = ""
+    if len(render().encode("utf-8")) > MAX_PROMPT_BYTES:
+        history_text = ""
+    available = MAX_PROMPT_BYTES - len(render().encode("utf-8"))
+    if available < 0:
+        raise HTTPException(status_code=413, detail="That message is too long. Please split it into smaller messages.")
+    search_context = fit_search_context(fixed_context, available)
+    return render()
 
 
 @app.get("/")

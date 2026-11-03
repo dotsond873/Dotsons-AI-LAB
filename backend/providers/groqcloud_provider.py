@@ -19,6 +19,7 @@ class GroqCloudProvider(AIProvider):
     async def generate(self, prompt: str) -> str:
         response = await self.client.chat.completions.create(
             model=self.model,
+            max_completion_tokens=1500,
             messages=[
                 {"role": "user", "content": prompt}
             ],

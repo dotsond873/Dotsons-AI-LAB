@@ -229,7 +229,7 @@ async def chat(request: ChatRequest):
                 raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
             search_status = "completed" if sources else "no_results"
             import json
-            search_context = json.dumps(sources, ensure_ascii=False) if sources else "Search returned no usable results. Say so; do not invent sources."
+            search_context = json.dumps(sources, ensure_ascii=False) if sources else "Search returned no usable results matching this request and its date constraints. Say so; do not invent sources or reuse old stories from conversation history. This does not prove that no news exists."
 
         prompt = build_prompt(
             message=(dated_query(request.message) if use_search else request.message),

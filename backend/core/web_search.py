@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from urllib.parse import urlparse
 import httpx
-from core.local_news import is_decatur_news, news_search_params, relevant_local_result
+from core.local_news import is_decatur_news, news_search_params, relevant_local_result, fresh_local_result
 
 
 class SearchUnavailable(Exception):
@@ -70,7 +70,6 @@ async def search_web(query: str) -> list[dict[str, str]]:
     params = {"engine": "google", "q": dated_query(query), "api_key": key, "hl": "en", "gl": "us"}
     local_params = news_search_params(query)
     if local_params:
-        local_params["q"] = dated_query(local_params["q"])
         params.update(local_params)
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
@@ -90,14 +89,14 @@ async def search_web(query: str) -> list[dict[str, str]]:
         raise SearchUnavailable("Web search is temporarily unavailable.") from None
     if not isinstance(data, dict) or data.get("error"):
         raise SearchUnavailable("Web search failed. Check your SerpApi account status.")
-    results = data.get("organic_results", [])
+    results = data.get("news_results" if local_news else "organic_results", [])
     if not isinstance(results, list):
         raise SearchUnavailable("Web search returned an unexpected response.")
     sources = []
     for result in results:
         if not isinstance(result, dict):
             continue
-        if local_news and not relevant_local_result(result):
+        if local_news and (not relevant_local_result(result) or not fresh_local_result(result, query)):
             continue
         url = result.get("link")
         if not isinstance(url, str):
@@ -109,7 +108,7 @@ async def search_web(query: str) -> list[dict[str, str]]:
             "title": str(result.get("title") or url)[:300],
             "url": url,
             "snippet": str(result.get("snippet") or "")[:1500],
-            "date": str(result.get("date") or ""),
+            "date": str(result.get("published_at") or result.get("date") or ""),
             "page_status": "not_read",
         })
         if len(sources) == 5:

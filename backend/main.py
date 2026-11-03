@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from core.web_search import SearchUnavailable, search_web, dated_query
 
+from core.search_policy import should_search
 from core.memory import memory
 from core.router import router
 
@@ -67,7 +68,7 @@ provider = GroqCloudProvider()
 class ChatRequest(BaseModel):
     message: str
     session_id: str = "default"
-    web_search: bool = False
+    web_search: bool | None = None
 
 
 class ChatResponse(BaseModel):
@@ -210,7 +211,8 @@ async def chat(request: ChatRequest):
         sources = []
         search_status = "not_requested"
         search_context = ""
-        if request.web_search:
+        use_search = should_search(request.message, request.web_search)
+        if use_search:
             try:
                 sources = await search_web(request.message)
             except SearchUnavailable as exc:
@@ -220,7 +222,7 @@ async def chat(request: ChatRequest):
             search_context = json.dumps(sources, ensure_ascii=False) if sources else "Search returned no usable results. Say so; do not invent sources."
 
         prompt = build_prompt(
-            message=(dated_query(request.message) if request.web_search else request.message),
+            message=(dated_query(request.message) if use_search else request.message),
             session_id=request.session_id,
             capability=capability,
             search_context=search_context,

@@ -17,7 +17,7 @@ export default function App() {
 
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [webSearch, setWebSearch] = useState(false);
+  const [webSearch, setWebSearch] = useState(null);
 
   const sessionId = "odb-default-session";
 
@@ -189,9 +189,14 @@ export default function App() {
       </main>
 
       <label style={{ padding: "12px 20px" }}>
-        <input type="checkbox" checked={webSearch} disabled={loading}
-          onChange={(event) => setWebSearch(event.target.checked)} />
-        {" "}Search the web for this answer
+        Web search:{" "}
+        <select aria-label="Web search mode" value={webSearch === null ? "auto" : webSearch ? "on" : "off"} disabled={loading}
+          onChange={(event) => setWebSearch(event.target.value === "auto" ? null : event.target.value === "on")}
+          style={{ background: "#181818", color: "white", padding: "8px", border: "1px solid #555", borderRadius: "6px", fontSize: "16px" }}>
+          <option value="auto">Auto — search when needed</option>
+          <option value="on">Always search</option>
+          <option value="off">Search off</option>
+        </select>
       </label>
       <footer style={styles.inputArea}>
         <textarea

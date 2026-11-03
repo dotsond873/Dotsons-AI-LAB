@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from core.web_search import SearchUnavailable, search_web
+from core.web_search import SearchUnavailable, search_web, dated_query
 
 from core.memory import memory
 from core.router import router
@@ -220,7 +220,7 @@ async def chat(request: ChatRequest):
             search_context = json.dumps(sources, ensure_ascii=False) if sources else "Search returned no usable results. Say so; do not invent sources."
 
         prompt = build_prompt(
-            message=request.message,
+            message=(dated_query(request.message) if request.web_search else request.message),
             session_id=request.session_id,
             capability=capability,
             search_context=search_context,

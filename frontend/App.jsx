@@ -1,5 +1,6 @@
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { loadConversations, saveConversations, newConversation, appendMessage, deleteConversation, requestHistory } from "./conversations.mjs";
 import labArt from "./assets/odb-lab-v2.webp";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -8,77 +9,69 @@ const API_URL =
 
 export default function App() {
   const [entered, setEntered] = useState(false);
-  const [messages, setMessages] = useState([
-    {
-      role: "assistant",
-      text: "ODB SHADY 6.9 online. What kind of trouble are we getting into?",
-    },
-  ]);
-
+  const [conversations, setConversations] = useState(() => {
+    try { return loadConversations(window.localStorage); }
+    catch { return loadConversations({ getItem() { throw new Error("Storage unavailable"); } }); }
+  });
+  const [storageNotice, setStorageNotice] = useState(conversations.notice || "");
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [webSearch, setWebSearch] = useState(null);
+  const sending = useRef(false);
+  const activeChat = conversations.chats.find(c => c.id === conversations.activeId) || conversations.chats[0];
+  const messages = activeChat.messages;
 
-  const sessionId = "odb-default-session";
+  useEffect(() => {
+    try { setStorageNotice(saveConversations(window.localStorage, conversations)); }
+    catch { setStorageNotice("Chats are only available in this tab because browser storage is unavailable."); }
+  }, [conversations]);
+
+  function startChat() {
+    if (sending.current) return;
+    const chat = newConversation();
+    setConversations(old => ({ ...old, chats: [chat, ...old.chats], activeId: chat.id }));
+    setInput("");
+  }
+
+  function removeChat() {
+    if (sending.current || !window.confirm("Delete this saved conversation from this browser?")) return;
+    setConversations(old => deleteConversation(old, activeChat.id));
+    setInput("");
+  }
+
+  function renameChat() {
+    if (sending.current) return;
+    const name = window.prompt("Conversation name", activeChat.title);
+    if (!name?.trim()) return;
+    setConversations(old => ({ ...old, chats: old.chats.map(c => c.id === activeChat.id ? { ...c, title: name.trim().slice(0, 80) } : c) }));
+  }
 
   async function sendMessage() {
     const text = input.trim();
-
-    if (!text || loading) return;
-
-    setMessages((old) => [
-      ...old,
-      {
-        role: "user",
-        text,
-      },
-    ]);
-
+    if (!text || sending.current) return;
+    sending.current = true;
+    const targetId = activeChat.id;
+    const history = requestHistory(activeChat.messages);
+    setConversations(old => appendMessage(old, targetId, { role: "user", text }));
     setInput("");
     setLoading(true);
-
     try {
       const response = await fetch(`${API_URL}/chat`, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    message: text,
-    session_id: sessionId,
-    web_search: webSearch,
-  }),
-});
-
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text, session_id: targetId, web_search: webSearch, history }),
+      });
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.detail || "ODB backend returned an error."
-        );
-      }
-
-      setMessages((old) => [
-        ...old,
-        {
-          role: "assistant",
-          text: data.response,
-          capability: data.capability,
-          sources: data.sources || [],
-          searchStatus: data.search_status,
-        },
-      ]);
+      if (!response.ok) throw new Error(data.detail || "ODB backend returned an error.");
+      setConversations(old => appendMessage(old, targetId, {
+        role: "assistant", text: data.response, capability: data.capability,
+        sources: data.sources || [], searchStatus: data.search_status,
+      }));
     } catch (error) {
-      setMessages((old) => [
-        ...old,
-        {
-          role: "assistant",
-          text:
-            "ODB backend connection failed: " +
-            error.message,
-        },
-      ]);
+      setConversations(old => appendMessage(old, targetId, {
+        role: "assistant", text: "ODB backend connection failed: " + error.message, error: true,
+      }));
     } finally {
+      sending.current = false;
       setLoading(false);
     }
   }
@@ -127,6 +120,20 @@ export default function App() {
         </div>
       </header>
 
+      <section className="conversation-tools" aria-label="Conversations">
+        <div className="conversation-actions">
+          <button onClick={startChat} disabled={loading}>+ New chat</button>
+          <label>Saved chats{" "}
+            <select aria-label="Saved conversations" value={activeChat.id} disabled={loading}
+              onChange={event => { setConversations(old => ({ ...old, activeId: event.target.value })); setInput(""); }}>
+              {conversations.chats.map(chat => <option key={chat.id} value={chat.id}>{chat.title}</option>)}
+            </select>
+          </label>
+          <button onClick={renameChat} disabled={loading}>Rename</button>
+          <button onClick={removeChat} disabled={loading}>Delete</button>
+        </div>
+        <p>{storageNotice || "Saved in this browser. Clearing browser data removes saved chats."}</p>
+      </section>
       <main style={styles.chat}>
         {messages.map((message, index) => (
           <div
@@ -335,6 +342,13 @@ const styles = {
 };
 
 const landingCss = `
+.conversation-tools { padding:14px 20px; border-bottom:1px solid #333; }
+.conversation-actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+.conversation-actions button,.conversation-actions select { padding:10px; background:#181818; color:#eee; border:1px solid #555; border-radius:6px; font-size:14px; cursor:pointer; }
+.conversation-actions select { max-width: min(65vw, 360px); }
+.conversation-actions button:disabled { opacity:.5; cursor:wait; }
+.conversation-tools p { margin:10px 0 0; color:#aaa; font-size:12px; }
+
 .chat-markdown a { color:#7ccfff; text-underline-offset:3px; }
 .chat-markdown table { min-width:560px; border-collapse:collapse; overflow-wrap:normal; word-break:normal; }
 .chat-markdown td,.chat-markdown th { padding:10px; text-align:left; border-bottom:1px solid #444; min-width:130px; }

@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from typing import Literal
 from core.web_search import SearchUnavailable, search_web, dated_query
 
 from core.search_policy import should_search
@@ -66,10 +67,16 @@ app.add_middleware(
 
 provider = GroqCloudProvider()
 
+class HistoryMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(max_length=20000)
+
+
 class ChatRequest(BaseModel):
     message: str
     session_id: str = "default"
     web_search: bool | None = None
+    history: list[HistoryMessage] | None = Field(default=None, max_length=20)
 
 
 class ChatResponse(BaseModel):
@@ -87,6 +94,7 @@ def build_prompt(
     session_id: str,
     capability: str,
     search_context: str = "",
+    history: list[dict[str, str]] | None = None,
 ) -> str:
 
     personality = (
@@ -95,7 +103,8 @@ def build_prompt(
         else ODB_PERSONALITY
     )
 
-    history = memory.get_history(session_id)
+    # A supplied browser transcript survives restarts and stays scoped to its chat.
+    history = memory.get_history(session_id) if history is None else history
 
     history_text = ""
 
@@ -144,7 +153,7 @@ USER:
 ODB SHADY 6.9:
 """
 
-    history_text = clip_utf8(history_text[-2000:], 600)
+    history_text = history_text.encode("utf-8")[-600:].decode("utf-8", errors="ignore")
     fixed_context = search_context
     search_context = ""
     if len(render().encode("utf-8")) > MAX_PROMPT_BYTES:
@@ -249,6 +258,7 @@ async def chat(request: ChatRequest):
             session_id=request.session_id,
             capability=capability,
             search_context=search_context,
+            history=([item.model_dump() for item in request.history] if request.history is not None else None),
         )
 
         response = await provider.generate(prompt)

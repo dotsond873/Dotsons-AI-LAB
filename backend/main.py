@@ -5,13 +5,13 @@ from zoneinfo import ZoneInfo
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from core.streaming import answer_events
+from core.streaming import answer_events, event
 from pydantic import BaseModel, Field
 from typing import Literal
 from core.web_search import SearchUnavailable, search_web, dated_query
 
 from core.search_policy import should_search
-from core.prompt_budget import MAX_PROMPT_BYTES, clip_utf8, fit_search_context
+from core.prompt_budget import MAX_PROMPT_BYTES, fit_history, fit_search_context
 from core.memory import memory
 from core.router import router
 
@@ -128,14 +128,6 @@ def build_prompt(
 
     history_text = ""
 
-    for item in history[-20:]:
-        role = item.get("role", "user")
-        content = item.get("content", "")
-
-        history_text += (
-            f"\n{role.upper()}: {content}"
-        )
-
     def render():
         return f"""
 SYSTEM:
@@ -173,14 +165,15 @@ USER:
 ODB SHADY 6.9:
 """
 
-    history_text = history_text.encode("utf-8")[-600:].decode("utf-8", errors="ignore")
     fixed_context = search_context
     search_context = ""
-    if len(render().encode("utf-8")) > MAX_PROMPT_BYTES:
-        history_text = ""
     available = MAX_PROMPT_BYTES - len(render().encode("utf-8"))
     if available < 0:
         raise HTTPException(status_code=413, detail="That message is too long. Please split it into smaller messages.")
+    # Reserve room for fresh evidence while allowing substantially more history.
+    search_reserve = min(1000, available) if fixed_context else 0
+    history_text = fit_history(history, available - search_reserve)
+    available = MAX_PROMPT_BYTES - len(render().encode("utf-8"))
     search_context = fit_search_context(fixed_context, available)
     return render()
 
@@ -255,39 +248,61 @@ async def roles():
 
 
 
+async def prepare_chat(request, capability):
+    sources = []
+    search_status = "not_requested"
+    search_context = ""
+    use_search = should_search(request.message, request.web_search)
+    if use_search:
+        try:
+            sources = await search_web(request.message)
+        except SearchUnavailable as exc:
+            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
+        search_status = "completed" if sources else "no_results"
+        import json
+        search_context = json.dumps(sources, ensure_ascii=False) if sources else "Search returned no usable results matching this request and its date constraints. Say so; do not invent sources or reuse old stories from conversation history. This does not prove that no news exists."
+
+    prompt = build_prompt(
+        message=(dated_query(request.message) if use_search else request.message),
+        session_id=request.session_id,
+        capability=capability,
+        search_context=search_context,
+        style=request.personality,
+        history=([item.model_dump() for item in request.history] if request.history is not None else None),
+    )
+    return prompt, sources, search_status
+
+
+async def chat_events(request, capability):
+    try:
+        searching = should_search(request.message, request.web_search)
+        yield event({"type": "status", "stage": "searching" if searching else "thinking"})
+        prompt, sources, search_status = await prepare_chat(request, capability)
+        if searching:
+            yield event({"type": "status", "stage": "thinking"})
+        from contextlib import aclosing
+        async with aclosing(answer_events(provider, prompt, request, capability, sources, search_status, memory)) as events:
+            async for record in events:
+                yield record
+    except HTTPException as exc:
+        yield event({"type": "error", "message": exc.detail, "status_code": exc.status_code})
+    except Exception:
+        yield event({"type": "error", "message": "Shady couldn't complete this request. Please try again."})
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     try:
         capability = router.route(request.message)
 
-        sources = []
-        search_status = "not_requested"
-        search_context = ""
-        use_search = should_search(request.message, request.web_search)
-        if use_search:
-            try:
-                sources = await search_web(request.message)
-            except SearchUnavailable as exc:
-                raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
-            search_status = "completed" if sources else "no_results"
-            import json
-            search_context = json.dumps(sources, ensure_ascii=False) if sources else "Search returned no usable results matching this request and its date constraints. Say so; do not invent sources or reuse old stories from conversation history. This does not prove that no news exists."
-
-        prompt = build_prompt(
-            message=(dated_query(request.message) if use_search else request.message),
-            session_id=request.session_id,
-            capability=capability,
-            search_context=search_context,
-            style=request.personality,
-            history=([item.model_dump() for item in request.history] if request.history is not None else None),
-        )
-
         if request.stream:
             return StreamingResponse(
-                answer_events(provider, prompt, request, capability, sources, search_status, memory),
+                chat_events(request, capability),
                 media_type="application/x-ndjson",
                 headers={"Cache-Control":"no-cache, no-transform", "X-Accel-Buffering":"no"},
             )
+
+        prompt, sources, search_status = await prepare_chat(request, capability)
 
         response = await provider.generate(prompt)
 
@@ -317,11 +332,11 @@ async def chat(request: ChatRequest):
 
     except HTTPException:
         raise
-    except Exception as exc:
+    except Exception:
         raise HTTPException(
             status_code=500,
-            detail=str(exc),
-        ) from exc
+            detail="Shady couldn't complete this request. Please try again.",
+        ) from None
 
 
 @app.get("/memory/{session_id}")

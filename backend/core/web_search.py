@@ -8,6 +8,15 @@ from urllib.parse import urlparse
 import httpx
 from core.local_news import is_local_news, news_search_params, relevant_local_result, fresh_local_result
 
+SEARCH_BUDGET_SECONDS = 10
+SEARCH_REQUEST_TIMEOUT = 4
+PAGE_TIMEOUT = 2
+
+
+def needs_page_excerpt(query):
+    """Only pay the page-reading delay when the user asks about a page."""
+    return bool(re.search(r"https?://|\b(?:read|summarize|analyse|analyze)\b.{0,40}\b(?:article|page|link)\b", query, re.I))
+
 
 class SearchUnavailable(Exception):
     def __init__(self, message: str, status_code: int = 502):
@@ -44,8 +53,8 @@ async def read_page(client, source, key):
         response = await client.get(
             "https://serpapi.com/search.md",
             params={"engine": "extract", "mode": "scrape", "url": source["url"],
-                    "api_key": key, "output": "md", "timeout": 10000},
-            timeout=12.0,
+                    "api_key": key, "output": "md", "timeout": 1500},
+            timeout=PAGE_TIMEOUT,
         )
         response.raise_for_status()
         content = response.text.strip()
@@ -60,6 +69,14 @@ async def read_page(client, source, key):
 
 
 async def search_web(query: str) -> list[dict[str, str]]:
+    # Bound the complete search, fallback and optional extraction together.
+    try:
+        return await asyncio.wait_for(_search_web(query), timeout=SEARCH_BUDGET_SECONDS)
+    except asyncio.TimeoutError:
+        raise SearchUnavailable("Web search timed out. Please try again.", 504) from None
+
+
+async def _search_web(query: str) -> list[dict[str, str]]:
     key = os.getenv("SERPAPI_API_KEY", "").strip()
     if not key:
         raise SearchUnavailable("Web search is not configured. Add SERPAPI_API_KEY to the backend environment.", 503)
@@ -72,7 +89,7 @@ async def search_web(query: str) -> list[dict[str, str]]:
     if local_params:
         params.update(local_params)
     try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
+        async with httpx.AsyncClient(timeout=SEARCH_REQUEST_TIMEOUT) as client:
             response = await client.get(
                 "https://serpapi.com/search.json",
                 params=params,
@@ -137,6 +154,7 @@ async def search_web(query: str) -> list[dict[str, str]]:
         })
         if len(sources) == 5:
             break
-    async with httpx.AsyncClient(timeout=12.0) as client:
-        await asyncio.gather(*(read_page(client, source, key) for source in sources[:2]))
+    if sources and needs_page_excerpt(query):
+        async with httpx.AsyncClient(timeout=PAGE_TIMEOUT) as client:
+            await read_page(client, sources[0], key)
     return sources

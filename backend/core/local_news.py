@@ -11,10 +11,21 @@ OUTLETS = {
 }
 
 def local_news_city(query):
+    query = query.replace("’", "'")
     if not re.search(r"\b(news|headlines?|stories)\b", query, re.I):
         return None
     if re.search(r"\b(world|national|international)\s+(news|headlines?)\b", query, re.I):
         return None
+    # Recognize supported cities regardless of where they appear in the question.
+    # A bare city means our Alabama service area; explicit other locations do not.
+    for city in OUTLETS:
+        if re.search(r"\b" + re.escape(city) + r",?\s+(?:alabama|al)\b", query, re.I):
+            return city
+    for city in OUTLETS:
+        if re.search(r"\b" + re.escape(city) + r"\b", query, re.I):
+            if re.search(r"\b" + re.escape(city) + r",?\s+(?:illinois|georgia|indiana|texas|michigan|england|uk|il|ga|in|tx|mi)\b", query, re.I):
+                continue
+            return city
     match = re.search(r"\b(?:in|from|for|about)\s+([a-z][a-z .'-]{1,45}?),?\s+(?:alabama|al)\b", query, re.I)
     if not match:
         match = re.search(r"^([a-z][a-z .'-]{1,45}?),?\s+(?:alabama|al)\b", query, re.I)

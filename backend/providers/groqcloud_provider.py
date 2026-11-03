@@ -26,3 +26,15 @@ class GroqCloudProvider(AIProvider):
         )
 
         return response.choices[0].message.content
+
+    async def stream(self, prompt: str):
+        response = await self.client.chat.completions.create(
+            model=self.model, max_completion_tokens=1500,
+            messages=[{"role": "user", "content": prompt}], stream=True,
+        )
+        try:
+            async for chunk in response:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+        finally:
+            await response.close()

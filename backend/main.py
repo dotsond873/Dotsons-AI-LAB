@@ -4,6 +4,8 @@ from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from core.streaming import answer_events
 from pydantic import BaseModel, Field
 from typing import Literal
 from core.web_search import SearchUnavailable, search_web, dated_query
@@ -76,6 +78,7 @@ class ChatRequest(BaseModel):
     message: str
     session_id: str = "default"
     web_search: bool | None = None
+    stream: bool = False
     history: list[HistoryMessage] | None = Field(default=None, max_length=20)
 
 
@@ -260,6 +263,13 @@ async def chat(request: ChatRequest):
             search_context=search_context,
             history=([item.model_dump() for item in request.history] if request.history is not None else None),
         )
+
+        if request.stream:
+            return StreamingResponse(
+                answer_events(provider, prompt, request, capability, sources, search_status, memory),
+                media_type="application/x-ndjson",
+                headers={"Cache-Control":"no-cache, no-transform", "X-Accel-Buffering":"no"},
+            )
 
         response = await provider.generate(prompt)
 

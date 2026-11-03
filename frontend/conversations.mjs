@@ -14,9 +14,10 @@ export function freshState(notice = "") {
 function safeMessage(message) {
   if (!message || !["user", "assistant"].includes(message.role) || typeof message.text !== "string") return null;
   const result = { role: message.role, text: message.text };
-  for (const key of ["greeting", "error", "capability", "searchStatus"]) {
+  for (const key of ["id", "incomplete", "greeting", "error", "capability", "searchStatus"]) {
     if (message[key] !== undefined) result[key] = message[key];
   }
+  if (message.incomplete) result.incomplete = true;
   if (Array.isArray(message.sources)) {
     result.sources = message.sources.filter(s => s && typeof s.url === "string" && (s.url.startsWith("https://") || s.url.startsWith("http://")))
       .map(s => ({ title: s.title || s.url, url: s.url, date: s.date || "", page_status: s.page_status || "not_read" }));
@@ -34,7 +35,7 @@ export function loadConversations(storage) {
     const chats = saved.chats.filter(c => c && typeof c.id === "string" && /^[a-zA-Z0-9-]{10,100}$/.test(c.id) && Array.isArray(c.messages))
       .filter(c => { if (ids.has(c.id)) return false; ids.add(c.id); return true; })
       .map(c => ({ id: c.id, title: typeof c.title === "string" ? c.title.slice(0, 80) : "Saved chat",
-        updatedAt: c.updatedAt || "", messages: c.messages.map(safeMessage).filter(Boolean) }));
+        updatedAt: c.updatedAt || "", messages: c.messages.map(safeMessage).filter(Boolean).map(m => m.incomplete ? { ...m, incomplete:false, error:true, text:(m.text || "") + "\n\nResponse interrupted before completion." } : m) }));
     if (!chats.length) return freshState();
     return { version: 1, chats, activeId: chats.some(c => c.id === saved.activeId) ? saved.activeId : chats[0].id, notice: "" };
   } catch {
@@ -67,6 +68,13 @@ export function deleteConversation(state, id) {
 }
 
 export function requestHistory(messages) {
-  return messages.filter(m => !m.greeting && !m.error).slice(-20)
+  return messages.filter(m => !m.greeting && !m.error && !m.incomplete).slice(-20)
     .map(m => ({ role: m.role, content: m.text.slice(0, 20000) }));
+}
+
+export function updateMessage(state, chatId, messageId, patch) {
+  return { ...state, chats: state.chats.map(chat => chat.id !== chatId ? chat : {
+    ...chat, messages: chat.messages.map(message => message.id === messageId
+      ? safeMessage({ ...message, ...patch }) : message)
+  }) };
 }

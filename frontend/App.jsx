@@ -1,6 +1,7 @@
 
 import { useState, useEffect, useRef } from "react";
-import { loadConversations, saveConversations, newConversation, appendMessage, deleteConversation, requestHistory } from "./conversations.mjs";
+import { loadConversations, saveConversations, newConversation, appendMessage, updateMessage, deleteConversation, requestHistory } from "./conversations.mjs";
+import { readAnswerStream } from "./answer-stream.mjs";
 import labArt from "./assets/odb-lab-v2.webp";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -16,6 +17,7 @@ export default function App() {
   const [storageNotice, setStorageNotice] = useState(conversations.notice || "");
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [streaming, setStreaming] = useState(false);
   const [webSearch, setWebSearch] = useState(null);
   const sending = useRef(false);
   const chatScroll = useRef(null);
@@ -91,28 +93,64 @@ export default function App() {
     followNewest.current = true;
     setShowJump(false);
     const targetId = activeChat.id;
+    const messageId = crypto.randomUUID();
     const history = requestHistory(activeChat.messages);
-    setConversations(old => appendMessage(old, targetId, { role: "user", text }));
+    let partial = "", started = false, flushTimer;
+    function patch(patch) {
+      setConversations(old => updateMessage(old, targetId, messageId, patch));
+    }
+    function flush(incomplete = true) {
+      clearTimeout(flushTimer);
+      flushTimer = undefined;
+      patch({ text:partial, incomplete });
+    }
+    setConversations(old => appendMessage(old, targetId, { role:"user", text }));
     setInput("");
     setLoading(true);
+    setStreaming(false);
     try {
       const response = await fetch(`${API_URL}/chat`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, session_id: targetId, web_search: webSearch, history }),
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ message:text, session_id:targetId, web_search:webSearch, history, stream:true }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || "ODB backend returned an error.");
-      setConversations(old => appendMessage(old, targetId, {
-        role: "assistant", text: data.response, capability: data.capability,
-        sources: data.sources || [], searchStatus: data.search_status,
-      }));
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(typeof error.detail === "string" ? error.detail : "ODB backend returned an error.");
+      }
+      if ((response.headers.get("content-type") || "").includes("application/x-ndjson")) {
+        await readAnswerStream(response, event => {
+          if (event.type === "meta") {
+            started = true;
+            setStreaming(true);
+            setConversations(old => appendMessage(old, targetId, {
+              id:messageId, role:"assistant", text:"", incomplete:true,
+              capability:event.capability, sources:event.sources || [], searchStatus:event.search_status,
+            }));
+          } else if (event.type === "delta") {
+            partial += event.text || "";
+            if (!flushTimer) flushTimer = setTimeout(() => flush(), 75);
+          } else if (event.type === "done") {
+            flush(false);
+          }
+        });
+      } else {
+        // Compatible with the previous backend during a staggered deployment.
+        const data = await response.json();
+        setConversations(old => appendMessage(old, targetId, {
+          role:"assistant", text:data.response, capability:data.capability,
+          sources:data.sources || [], searchStatus:data.search_status,
+        }));
+      }
     } catch (error) {
-      setConversations(old => appendMessage(old, targetId, {
-        role: "assistant", text: "ODB backend connection failed: " + error.message, error: true,
-      }));
+      clearTimeout(flushTimer);
+      const notice = (partial ? "\n\n" : "") + "Response interrupted: " + error.message;
+      if (started) patch({ text:partial + notice, incomplete:false, error:true });
+      else setConversations(old => appendMessage(old, targetId, { role:"assistant", text:notice, error:true }));
     } finally {
+      clearTimeout(flushTimer);
       sending.current = false;
       setLoading(false);
+      setStreaming(false);
     }
   }
 
@@ -191,7 +229,7 @@ export default function App() {
   {message.role === "assistant" ? (
     <div className="chat-markdown" style={{ overflowX: "auto" }}>
       <ReactMarkdown remarkPlugins={[remarkGfm]}>
-        {message.text}
+        {message.text || (message.incomplete ? "Shady is writing…" : "")}
       </ReactMarkdown>
     </div>
   ) : (
@@ -220,7 +258,7 @@ export default function App() {
           </div>
         ))}
 
-        {loading && (
+        {loading && !streaming && (
           <div
             className="chat-message odb-message thinking" role="status"
           >

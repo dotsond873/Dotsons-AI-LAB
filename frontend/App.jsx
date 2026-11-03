@@ -1,11 +1,13 @@
 
 import { useState } from "react";
+import labArt from "./assets/odb-lab.webp";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 const API_URL =
   import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 export default function App() {
+  const [entered, setEntered] = useState(false);
   const [messages, setMessages] = useState([
     {
       role: "assistant",
@@ -88,17 +90,36 @@ export default function App() {
     }
   }
 
+  if (!entered) return (
+    <main className="lab-entrance">
+      <style>{landingCss}</style>
+      <img className="lab-art" src={labArt} alt="Humanoid AI working at illuminated consoles inside Dotson Labs" />
+      <div className="lab-shade" />
+      <nav className="lab-nav" aria-label="Main navigation">
+        <a className="lab-brand" href="#home">D<span>/</span>L <small>DOTSON LABS</small></a>
+        <span className="lab-edition">ODB / 6.9</span>
+      </nav>
+      <section className="lab-copy" id="home">
+        <p className="lab-eyebrow">WELCOME TO THE LAB</p>
+        <h1>Intelligence.<br /><span>With attitude.</span></h1>
+        <p className="lab-intro">Meet ODB SHADY 6.9. Your space to ask questions, explore ideas, and search the web.</p>
+        <button className="lab-enter" onClick={() => { setEntered(true); window.scrollTo(0, 0); }}>Enter ODB SHADY 6.9 <span aria-hidden="true">↗</span></button>
+        <p className="lab-hint">Step inside. Bring your curiosity.</p>
+      </section>
+      <footer className="lab-footer"><span>DOTSON LABS / ARTIFICIAL INTELLIGENCE</span><span>ASK. EXPLORE. CREATE.</span></footer>
+    </main>
+  );
+
   return (
     <div style={styles.page}>
+      <style>{landingCss}</style>
       <header style={styles.header}>
         <div>
           <div style={styles.logo}>
             ODB SHADY 6.9
           </div>
 
-          <div style={styles.subtitle}>
-            DOTSON LABS
-          </div>
+          <button className="lab-back" onClick={() => setEntered(false)}>← DOTSON LABS</button>
         </div>
 
         <div style={styles.status}>
@@ -306,3 +327,26 @@ const styles = {
     cursor: "pointer",
   },
 };
+
+const landingCss = `
+body { margin: 0; background: #080d10; }
+.lab-entrance { min-height: 100svh; position: relative; isolation: isolate; overflow: hidden; background: #080d10; color: #f1f4f2; font-family: Arial, Helvetica, sans-serif; display: flex; flex-direction: column; }
+.lab-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 65% center; z-index: -3; }
+.lab-shade { position: absolute; inset: 0; z-index: -2; background: linear-gradient(90deg,rgba(5,12,15,.9),rgba(5,12,15,.55) 36%,transparent 72%),linear-gradient(0deg,#080d10,transparent 24%); }
+.lab-nav { padding: 32px 6vw; display:flex; justify-content:space-between; align-items:center; }
+.lab-brand { text-decoration:none; color:inherit; font-weight:900; font-size:28px; letter-spacing:-2px; display:flex; align-items:center; gap:8px; }
+.lab-brand span { color:#89e1dc; } .lab-brand small { font-size:11px; letter-spacing:3px; margin-left:14px; }
+.lab-edition { font:11px monospace; letter-spacing:3px; color:#b6c7c9; }
+.lab-copy { margin:auto 0; padding:80px 6vw 100px; max-width:590px; }
+.lab-eyebrow { font:11px monospace; color:#8dddd7; letter-spacing:4px; margin:0 0 30px; }
+.lab-copy h1 { font-size:clamp(48px,6.2vw,92px); line-height:1.01; letter-spacing:-5px; margin:0 0 28px; font-weight:800; }
+.lab-copy h1 span { color:#a5b4b5; }
+.lab-intro { max-width:350px; color:#b7c6c8; font-size:17px; line-height:1.7; margin-bottom:32px; }
+.lab-enter { background:#b0f2e9; border:1px solid #b0f2e9; color:#081817; padding:20px 24px; border-radius:3px; font-size:14px; font-weight:700; cursor:pointer; display:flex; gap:32px; align-items:center; transition:background .2s,transform .2s; }
+.lab-enter:hover { background:white; transform:translateY(-2px); } .lab-enter:focus-visible,.lab-back:focus-visible,.lab-brand:focus-visible { outline:3px solid #fff; outline-offset:6px; }
+.lab-enter span { font-size:22px; } .lab-hint { font-size:11px; color:#869b9e; margin-top:16px; }
+.lab-footer { display:flex; justify-content:space-between; padding:24px 6vw; border-top:1px solid #ffffff1c; font:9px monospace; letter-spacing:2px; color:#8da3a5; }
+.lab-back { background:none; border:0; color:#aaa; padding:8px 0 0; font-size:11px; letter-spacing:3px; cursor:pointer; }
+@media(max-width:650px) { .lab-nav { padding:24px; } .lab-brand small { font-size:9px; letter-spacing:2px; margin-left:8px; } .lab-edition { font-size:9px; letter-spacing:1px; } .lab-art { height:62%; object-position:70% center; } .lab-shade { background:linear-gradient(0deg,#080d10 22%,rgba(8,13,16,.96) 37%,transparent 75%); } .lab-copy { margin:auto 0 0; padding:220px 24px 40px; } .lab-copy h1 { font-size:52px; letter-spacing:-2.5px; } .lab-eyebrow { margin-bottom:20px; } .lab-intro { font-size:15px; } .lab-footer { padding:20px 24px; font-size:8px; } .lab-footer span:last-child { display:none; } }
+@media(prefers-reduced-motion:reduce) { .lab-enter { transition:none; } }
+`;

@@ -94,8 +94,17 @@ async def search_web(query: str) -> list[dict[str, str]]:
         raise SearchUnavailable("Web search timed out. Please try again.", 504) from None
     except (httpx.HTTPError, ValueError):
         raise SearchUnavailable("Web search is temporarily unavailable.") from None
-    if not isinstance(data, dict) or data.get("error"):
-        raise SearchUnavailable("Web search failed. Check your SerpApi account status.")
+    if not isinstance(data, dict):
+        raise SearchUnavailable("Web search returned an unexpected response.")
+    if data.get("error"):
+        error = str(data["error"])
+        # An empty Google result set is not a credential or account failure.
+        if re.search(r"(?:hasn.t returned any results|no (?:search )?results (?:were )?found|returned no results)", error, re.I):
+            return []
+        # Expose a bounded explanation, never the credential or full request URL.
+        safe_error = error.replace(key, "[redacted]")
+        safe_error = re.sub(r"https?://\\S+", "[provider URL]", safe_error)
+        raise SearchUnavailable("Search provider: " + safe_error[:240])
     results = data.get("news_results", data.get("organic_results", [])) if local_news else data.get("organic_results", [])
     if not isinstance(results, list):
         raise SearchUnavailable("Web search returned an unexpected response.")

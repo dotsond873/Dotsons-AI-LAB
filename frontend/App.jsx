@@ -18,6 +18,10 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [webSearch, setWebSearch] = useState(null);
   const sending = useRef(false);
+  const chatScroll = useRef(null);
+  const inputBox = useRef(null);
+  const followNewest = useRef(true);
+  const [showJump, setShowJump] = useState(false);
   const activeChat = conversations.chats.find(c => c.id === conversations.activeId) || conversations.chats[0];
   const messages = activeChat.messages;
 
@@ -25,6 +29,40 @@ export default function App() {
     try { setStorageNotice(saveConversations(window.localStorage, conversations)); }
     catch { setStorageNotice("Chats are only available in this tab because browser storage is unavailable."); }
   }, [conversations]);
+
+
+  useEffect(() => {
+    const box = inputBox.current;
+    if (!box) return;
+    box.style.height = "auto";
+    box.style.height = Math.min(box.scrollHeight, 180) + "px";
+  }, [input, entered]);
+
+  useEffect(() => {
+    followNewest.current = true;
+    setShowJump(false);
+    if (chatScroll.current) chatScroll.current.scrollTop = chatScroll.current.scrollHeight;
+  }, [activeChat.id, entered]);
+
+  useEffect(() => {
+    if (followNewest.current && chatScroll.current) {
+      chatScroll.current.scrollTop = chatScroll.current.scrollHeight;
+    }
+  }, [messages, loading, entered]);
+
+  function trackScroll() {
+    const box = chatScroll.current;
+    if (!box) return;
+    const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 100;
+    followNewest.current = nearBottom;
+    setShowJump(!nearBottom);
+  }
+
+  function jumpToLatest() {
+    followNewest.current = true;
+    setShowJump(false);
+    if (chatScroll.current) chatScroll.current.scrollTop = chatScroll.current.scrollHeight;
+  }
 
   function startChat() {
     if (sending.current) return;
@@ -50,6 +88,8 @@ export default function App() {
     const text = input.trim();
     if (!text || sending.current) return;
     sending.current = true;
+    followNewest.current = true;
+    setShowJump(false);
     const targetId = activeChat.id;
     const history = requestHistory(activeChat.messages);
     setConversations(old => appendMessage(old, targetId, { role: "user", text }));
@@ -77,7 +117,8 @@ export default function App() {
   }
 
   function handleKeyDown(event) {
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing &&
+        (!window.matchMedia("(pointer: coarse)").matches || event.ctrlKey || event.metaKey)) {
       event.preventDefault();
       sendMessage();
     }
@@ -104,18 +145,18 @@ export default function App() {
   );
 
   return (
-    <div style={styles.page}>
+    <div className="chat-page">
       <style>{landingCss}</style>
-      <header style={styles.header}>
+      <header className="chat-header">
         <div>
-          <div style={styles.logo}>
+          <div className="chat-logo">
             ODB SHADY 6.9
           </div>
 
           <button className="lab-back" onClick={() => setEntered(false)}>← DOTSON LABS</button>
         </div>
 
-        <div style={styles.status}>
+        <div className="chat-status">
           ● ONLINE
         </div>
       </header>
@@ -134,18 +175,13 @@ export default function App() {
         </div>
         <p>{storageNotice || "Saved in this browser. Clearing browser data removes saved chats."}</p>
       </section>
-      <main style={styles.chat}>
+      <main className="chat-feed" ref={chatScroll} onScroll={trackScroll} aria-label="Conversation messages" tabIndex={0}>
         {messages.map((message, index) => (
           <div
             key={index}
-            style={{
-              ...styles.message,
-                            ...(message.role === "user"
-                ? styles.userMessage
-                : styles.odbMessage),
-            }}
+            className={`chat-message ${message.role === "user" ? "user-message" : "odb-message"}`}
           >
-            <div style={styles.role}>
+            <div className="message-role">
               {message.role === "user"
                 ? "YOU"
                 : "ODB"}
@@ -164,7 +200,7 @@ export default function App() {
 </div>
 
             {message.sources?.length > 0 && (
-              <div>
+              <div className="web-sources">
                 <strong>Web sources</strong>
                 <ul>{message.sources.map((source) => (
                   <li key={source.url}>
@@ -177,7 +213,7 @@ export default function App() {
             {message.searchStatus === "no_results" && <p>No web results found.</p>}
 
             {message.capability && (
-              <div style={styles.capability}>
+              <div className="message-mode">
                 mode: {message.capability}
               </div>
             )}
@@ -186,162 +222,105 @@ export default function App() {
 
         {loading && (
           <div
-            style={{
-              ...styles.message,
-              ...styles.odbMessage,
-            }}
+            className="chat-message odb-message thinking" role="status"
           >
             ODB is thinking...
           </div>
         )}
       </main>
 
-      <label style={{ padding: "12px 20px" }}>
+      <div className="composer-dock">
+      {showJump && <button className="jump-latest" onClick={jumpToLatest}>↓ Latest messages</button>}
+      <label className="search-control">
         Web search:{" "}
         <select aria-label="Web search mode" value={webSearch === null ? "auto" : webSearch ? "on" : "off"} disabled={loading}
           onChange={(event) => setWebSearch(event.target.value === "auto" ? null : event.target.value === "on")}
-          style={{ background: "#181818", color: "white", padding: "8px", border: "1px solid #555", borderRadius: "6px", fontSize: "16px" }}>
+          >
           <option value="auto">Auto — search when needed</option>
           <option value="on">Always search</option>
           <option value="off">Search off</option>
         </select>
       </label>
-      <footer style={styles.inputArea}>
+      <footer className="input-area">
         <textarea
+          ref={inputBox}
+          aria-label="Message to Shady"
           value={input}
           onChange={(event) =>
             setInput(event.target.value)
           }
           onKeyDown={handleKeyDown}
           placeholder="Talk to ODB..."
-          style={styles.input}
-          rows={2}
+          className="message-input"
+          rows={1}
         />
 
         <button
           onClick={sendMessage}
-          disabled={loading}
-          style={styles.button}
+          disabled={loading || !input.trim()}
+          className="send-button"
         >
-          SEND
+          {loading ? "WAIT" : "SEND"}
         </button>
       </footer>
+      <div className="composer-hint">Enter adds a new line on your phone · Chats save in this browser</div>
+      </div>
     </div>
   );
 }
-const styles = {
-  page: {
-    minHeight: "100vh",
-    background:
-      "linear-gradient(180deg, #090909, #151515)",
-    color: "#f5f5f5",
-    fontFamily: "Arial, Helvetica, sans-serif",
-    display: "flex",
-    flexDirection: "column",
-  },
-
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "20px",
-    borderBottom: "1px solid #333",
-    background: "#050505",
-  },
-
-  logo: {
-    fontSize: "28px",
-    fontWeight: "900",
-    letterSpacing: "2px",
-  },
-
-  subtitle: {
-    fontSize: "11px",
-    color: "#888",
-    letterSpacing: "4px",
-    marginTop: "4px",
-  },
-
-  status: {
-    fontSize: "12px",
-    color: "#7cff8a",
-    fontWeight: "bold",
-  },
-
-  chat: {
-    flex: 1,
-    width: "100%",
-    maxWidth: "900px",
-    margin: "0 auto",
-    padding: "20px",
-    boxSizing: "border-box",
-  },
-
-  message: {
-    padding: "15px",
-    marginBottom: "14px",
-    borderRadius: "14px",
-    lineHeight: "1.5",
-    whiteSpace: "pre-wrap",
-  },
-    userMessage: {
-    marginLeft: "15%",
-    background: "#292929",
-    border: "1px solid #444",
-  },
-
-  odbMessage: {
-    marginRight: "15%",
-    background: "#111",
-    border: "1px solid #333",
-  },
-
-  role: {
-    fontSize: "11px",
-    fontWeight: "bold",
-    letterSpacing: "2px",
-    marginBottom: "8px",
-    color: "#aaa",
-  },
-
-  capability: {
-    fontSize: "10px",
-    color: "#777",
-    marginTop: "10px",
-  },
-
-  inputArea: {
-    display: "flex",
-    gap: "10px",
-    padding: "16px",
-    borderTop: "1px solid #333",
-    background: "#050505",
-  },
-
-  input: {
-    flex: 1,
-    resize: "none",
-    background: "#181818",
-    color: "white",
-    border: "1px solid #444",
-    borderRadius: "10px",
-    padding: "12px",
-    fontSize: "16px",
-    outline: "none",
-  },
-
-  button: {
-    background: "#f2f2f2",
-    color: "#111",
-    border: "none",
-    borderRadius: "10px",
-    padding: "0 22px",
-    fontWeight: "900",
-    cursor: "pointer",
-  },
-};
-
 const landingCss = `
+.chat-page { --ink:#f1f4f2; --muted:#a8bdc1; --mint:#b0f2e9; --line:#24434b; height:100dvh; height:100svh; height:100dvh; display:flex; flex-direction:column; color:var(--ink); background:radial-gradient(ellipse at 85% 0%,#102a36 0%,#080d10 58%); font-family:Arial,Helvetica,sans-serif; overflow:hidden; }
+.chat-header { flex-shrink:0; display:flex; justify-content:space-between; align-items:center; padding:18px 24px; background:#080f14e8; border-bottom:1px solid var(--line); }
+.chat-logo { font-size:23px; font-weight:900; letter-spacing:2px; }
+.chat-status { font-size:10px; letter-spacing:2px; color:var(--mint); }
+.chat-page .lab-back { color:#7cb6cf; letter-spacing:2px; min-height:32px; }
+.chat-page .conversation-tools { padding:12px 24px; border-color:var(--line); background:#0a151be0; flex-shrink:0; }
+.chat-page .conversation-actions { gap:8px; }
+.chat-page .conversation-actions button,.chat-page .conversation-actions select,.search-control select { min-height:42px; background:#10212a; color:#d7ecec; border:1px solid #2b4b57; border-radius:9px; font-size:14px; padding:9px 12px; }
+.chat-page .conversation-actions button:first-child { background:#143840; border-color:#41858a; color:var(--mint); }
+.chat-page .conversation-tools p { font-size:11px; color:#91aaaf; }
+.chat-feed { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:24px max(20px,calc((100% - 860px)/2)); scrollbar-color:#3e6977 #091218; }
+.chat-message { box-sizing:border-box; padding:20px; margin:0 0 20px; border-radius:16px; line-height:1.65; min-width:0; max-width:100%; }
+.odb-message { margin-right:7%; background:#0d1a21; border:1px solid #24434b; box-shadow:0 8px 32px #0002; }
+.user-message { margin-left:12%; background:linear-gradient(135deg,#123440,#102736); border:1px solid #326273; }
+.message-role { font:700 10px monospace; letter-spacing:3px; margin-bottom:12px; color:#8dddd7; }
+.user-message .message-role { color:#8ec8f1; }
+.message-mode { font-size:10px; color:#8ba5ac; margin-top:14px; }
+.chat-page .chat-markdown { font-size:16px; overflow-wrap:break-word; }
+.chat-page .chat-markdown p:first-child { margin-top:0; }
+.chat-page .chat-markdown p:last-child { margin-bottom:0; }
+.chat-page .chat-markdown a { color:#8dd8ff; }
+.chat-page .chat-markdown h1 { font-size:1.5em; }.chat-page .chat-markdown h2 { font-size:1.3em; }.chat-page .chat-markdown h3 { font-size:1.15em; }
+.chat-page .chat-markdown ul,.chat-page .chat-markdown ol { padding-left:24px; }
+.chat-page .chat-markdown li { margin:8px 0; }
+.chat-page .chat-markdown pre { background:#060e13; border:1px solid #29454e; border-radius:8px; padding:12px; overflow-x:auto; }
+.chat-page .chat-markdown pre code { overflow-wrap:normal; white-space:pre; }
+.chat-page .chat-markdown img { max-width:100%; height:auto; }
+.chat-page .chat-markdown th,.chat-page .chat-markdown td { border-color:#29454e; }
+.web-sources { margin-top:20px; border-top:1px solid var(--line); padding-top:14px; font-size:14px; }
+.web-sources strong { color:var(--mint); font-size:12px; letter-spacing:1px; }
+.web-sources ul { list-style:none; padding:0; margin:10px 0 0; }
+.web-sources li { background:#0a141c; border:1px solid #243f49; border-radius:9px; margin:8px 0; padding:12px; overflow-wrap:anywhere; }
+.composer-dock { position:relative; flex-shrink:0; border-top:1px solid var(--line); background:#0a141bee; padding:10px max(16px,calc((100% - 860px)/2)) max(10px,env(safe-area-inset-bottom)); }
+.search-control { display:flex; align-items:center; gap:10px; color:#a4c1c5; font-size:12px; margin-bottom:10px; }
+.search-control select { min-height:36px; padding:5px 10px; font-size:13px; max-width:100%; }
+.input-area { display:flex; align-items:flex-end; gap:10px; background:#0e222c; border:1px solid #37616d; border-radius:14px; padding:10px; box-shadow:0 0 24px #1ba6cb0b; }
+.input-area:focus-within { border-color:#8dddd7; box-shadow:0 0 0 2px #8dddd71a; }
+.message-input { box-sizing:border-box; flex:1; min-width:0; min-height:46px; max-height:180px; overflow-y:auto; resize:none; background:transparent; color:#edf7f6; border:0; padding:12px 8px; font:16px/1.5 Arial,Helvetica,sans-serif; outline:none; }
+.message-input::placeholder { color:#8ba6af; }
+.send-button { min-height:46px; min-width:70px; border:1px solid #b0f2e9; border-radius:9px; background:#b0f2e9; color:#081817; padding:12px 16px; font-size:12px; font-weight:900; cursor:pointer; }
+.send-button:hover:not(:disabled) { background:white; }.send-button:disabled { opacity:.4; cursor:default; }
+.composer-hint { padding-top:8px; font-size:10px; color:#819ea6; }
+.jump-latest { position:absolute; top:-45px; left:50%; transform:translateX(-50%); border:1px solid #477a86; background:#14313d; color:#c3f3ee; border-radius:20px; padding:9px 16px; white-space:nowrap; cursor:pointer; }
+.chat-page button:focus-visible,.chat-page select:focus-visible,.chat-feed:focus-visible { outline:2px solid #8dddd7; outline-offset:3px; }
+@media(max-width:650px) {
+ .chat-header { padding:12px 16px; }.chat-logo { font-size:19px; letter-spacing:1px; }.chat-status { letter-spacing:1px; }
+ .chat-page .conversation-tools { padding:10px 16px; }.conversation-actions label { min-width:0; flex:1; font-size:12px; }.chat-page .conversation-actions select { max-width:100%; width:100%; }
+ .chat-page .conversation-actions button { min-height:42px; font-size:12px; padding:9px 11px; }.chat-page .conversation-actions button:first-child { align-self:flex-end; }
+ .chat-feed { padding:16px 12px; }.chat-message { padding:16px; margin-bottom:16px; }.odb-message { margin-right:0; }.user-message { margin-left:6%; }
+ .composer-dock { padding-left:12px; padding-right:12px; }.search-control select { font-size:16px; }.composer-hint { font-size:9px; }
+}
+
 .conversation-tools { padding:14px 20px; border-bottom:1px solid #333; }
 .conversation-actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
 .conversation-actions button,.conversation-actions select { padding:10px; background:#181818; color:#eee; border:1px solid #555; border-radius:6px; font-size:14px; cursor:pointer; }

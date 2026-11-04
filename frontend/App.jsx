@@ -8,6 +8,41 @@ import remarkGfm from "remark-gfm";
 const API_URL =
   import.meta.env.VITE_API_URL || "http://localhost:8000";
 
+function ShareShady() {
+  const [notice, setNotice] = useState("");
+  const url = new URL("/", window.location.origin).href;
+
+  async function share() {
+    setNotice("");
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "ODB SHADY 6.9", url });
+        return;
+      } catch (error) {
+        if (error.name === "AbortError") return;
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setNotice("Link copied");
+    } catch {
+      setNotice("Copy this link");
+    }
+  }
+
+  return (
+    <div className="share-shady">
+      <button type="button" className="share-button" onClick={share}>Share Shady</button>
+      {notice && <div className="share-notice" role="status">
+        {notice}
+        {notice === "Copy this link" && (
+          <input aria-label="Shady app link" readOnly value={url} onFocus={event => event.target.select()} />
+        )}
+      </div>}
+    </div>
+  );
+}
+
 export default function App() {
   const [entered, setEntered] = useState(false);
   const [conversations, setConversations] = useState(() => {
@@ -173,7 +208,7 @@ export default function App() {
       <div className="lab-shade" />
       <nav className="lab-nav" aria-label="Main navigation">
         <a className="lab-brand" href="#home"><small>Dotson <b>Labs</b></small></a>
-        <span className="lab-edition">ODB / 6.9</span>
+        <ShareShady />
       </nav>
       <section className="lab-copy" id="home">
         <p className="lab-eyebrow">WELCOME TO THE LAB</p>
@@ -198,9 +233,7 @@ export default function App() {
           <button className="lab-back" onClick={() => setEntered(false)}>← DOTSON LABS</button>
         </div>
 
-        <div className="chat-status">
-          ● ONLINE
-        </div>
+        <div className="chat-header-actions"><span className="chat-status">● ONLINE</span><ShareShady /></div>
       </header>
 
       <section className="conversation-tools" aria-label="Conversations">
@@ -322,6 +355,14 @@ export default function App() {
   );
 }
 const landingCss = `
+.share-shady { position:relative; }
+.share-button { background:#102a36; color:#b0f2e9; border:1px solid #3997a3; border-radius:8px; min-height:42px; padding:8px 12px; font:600 14px Arial,sans-serif; cursor:pointer; }
+.share-button:focus-visible { outline:2px solid #b0f2e9; outline-offset:3px; }
+.share-notice { position:absolute; right:0; top:calc(100% + 6px); z-index:2; min-width:110px; padding:8px; border-radius:8px; background:#102a36; color:#f1f4f2; font:13px Arial,sans-serif; }
+.share-notice input { display:block; width:min(220px,65vw); margin-top:6px; font-size:16px; }
+.chat-header-actions { display:flex; align-items:center; gap:12px; }
+@media(max-width:480px) { .chat-header-actions .chat-status { display:none; } }
+
 .composer-controls { display:flex; flex-wrap:wrap; column-gap:20px; row-gap:0; align-items:center; }
 @media(max-width:650px) { .composer-controls { column-gap:12px; } .composer-controls .search-control { flex-wrap:wrap; gap:5px; margin-bottom:8px; } .composer-controls .search-control select { font-size:14px; min-height:38px; } }
 

@@ -248,6 +248,28 @@ export default function App() {
               <button onClick={removeChat} disabled={loading}>Delete</button>
             </div>
             <p>{storageNotice || "Saved in this browser. Clearing browser data removes saved chats."}</p>
+
+            <div className="chat-settings">
+              <label className="search-control">
+                Web search:{" "}
+                <select aria-label="Web search mode" value={webSearch === null ? "auto" : webSearch ? "on" : "off"} disabled={loading}
+                  onChange={(event) => setWebSearch(event.target.value === "auto" ? null : event.target.value === "on")}
+                  >
+                  <option value="auto">Auto — search when needed</option>
+                  <option value="on">Always search</option>
+                  <option value="off">Search off</option>
+                </select>
+              </label>
+              <label className="search-control">
+                Personality:{" "}
+                <select aria-label="Shady personality" disabled={loading} value={activeChat.personality || "shady"}
+                  onChange={event => setConversations(old => setPersonality(old, activeChat.id, event.target.value))}>
+                  <option value="shady">Shady</option>
+                  <option value="professional">Professional</option>
+                  <option value="direct">Straight to the Point</option>
+                </select>
+              </label>
+            </div>
             <ShareShady />
           </section>
         </details>
@@ -308,27 +330,6 @@ export default function App() {
 
       <div className="composer-dock">
       {showJump && <button className="jump-latest" onClick={jumpToLatest}>↓ Latest messages</button>}
-      <div className="composer-controls">
-      <label className="search-control">
-        Web search:{" "}
-        <select aria-label="Web search mode" value={webSearch === null ? "auto" : webSearch ? "on" : "off"} disabled={loading}
-          onChange={(event) => setWebSearch(event.target.value === "auto" ? null : event.target.value === "on")}
-          >
-          <option value="auto">Auto — search when needed</option>
-          <option value="on">Always search</option>
-          <option value="off">Search off</option>
-        </select>
-      </label>
-      <label className="search-control">
-        Personality:{" "}
-        <select aria-label="Shady personality" disabled={loading} value={activeChat.personality || "shady"}
-          onChange={event => setConversations(old => setPersonality(old, activeChat.id, event.target.value))}>
-          <option value="shady">Shady</option>
-          <option value="professional">Professional</option>
-          <option value="direct">Straight to the Point</option>
-        </select>
-      </label>
-      </div>
       <footer className="input-area">
         <textarea
           ref={inputBox}
@@ -368,11 +369,12 @@ const landingCss = `
 .chat-page .chat-menu .conversation-tools { position:absolute; top:100%; right:12px; box-sizing:border-box; width:min(360px, calc(100% - 24px)); max-height:60dvh; overflow:auto; background:#0a151b; border:1px solid var(--line); border-radius:12px; box-shadow:0 12px 30px #0008; }
 .chat-menu .conversation-actions label { order:-1; flex:0 0 100%; min-width:0; }
 .chat-menu .conversation-actions select { display:block; width:100%; max-width:100%; margin-top:4px; }
+.chat-settings { margin-top:14px; }
+.chat-settings .search-control { display:grid; gap:4px; }
+.chat-settings select { width:100%; }
 .chat-menu .share-shady { margin-top:12px; }
 .chat-menu .share-notice { position:static; margin-top:6px; }
 
-.composer-controls { display:flex; flex-wrap:wrap; column-gap:20px; row-gap:0; align-items:center; }
-@media(max-width:650px) { .composer-controls { column-gap:12px; } .composer-controls .search-control { flex-wrap:wrap; gap:5px; margin-bottom:8px; } .composer-controls .search-control select { font-size:14px; min-height:38px; } }
 
 .chat-page { --ink:#f1f4f2; --muted:#a8bdc1; --mint:#b0f2e9; --line:#24434b; height:100dvh; height:100svh; height:100dvh; display:flex; flex-direction:column; color:var(--ink); background:radial-gradient(ellipse at 85% 0%,#102a36 0%,#080d10 58%); font-family:Arial,Helvetica,sans-serif; overflow:hidden; }
 .chat-header { flex-shrink:0; display:flex; justify-content:space-between; align-items:center; padding:18px 24px; background:#080f14e8; border-bottom:1px solid var(--line); }

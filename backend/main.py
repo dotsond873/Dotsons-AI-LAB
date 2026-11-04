@@ -14,6 +14,7 @@ from core.search_policy import should_search
 from core.prompt_budget import MAX_PROMPT_BYTES, fit_history, fit_search_context
 from core.memory import memory
 from core.router import router
+from core.repo_reader import read_repo_command
 
 from providers.groqcloud_provider import GroqCloudProvider
 
@@ -256,8 +257,16 @@ async def prepare_chat(request, capability):
     sources = []
     search_status = "not_requested"
     search_context = ""
-    use_search = should_search(request.message, request.web_search)
-    if use_search:
+    message = request.message
+    repo_command = message.split(maxsplit=1)[:1] == ["/repo"]
+    use_search = not repo_command and should_search(message, request.web_search)
+    if repo_command:
+        try:
+            message, search_context, source = await read_repo_command(message)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from None
+        sources = [source]
+    elif use_search:
         try:
             sources = await search_web(request.message)
         except SearchUnavailable as exc:
@@ -267,7 +276,7 @@ async def prepare_chat(request, capability):
         search_context = json.dumps(sources, ensure_ascii=False) if sources else "Search returned no usable results matching this request and its date constraints. Say so; do not invent sources or reuse old stories from conversation history. This does not prove that no news exists."
 
     prompt = build_prompt(
-        message=(dated_query(request.message) if use_search else request.message),
+        message=(dated_query(message) if use_search else message),
         session_id=request.session_id,
         capability=capability,
         search_context=search_context,
@@ -279,7 +288,7 @@ async def prepare_chat(request, capability):
 
 async def chat_events(request, capability):
     try:
-        searching = should_search(request.message, request.web_search)
+        searching = request.message.split(maxsplit=1)[:1] != ["/repo"] and should_search(request.message, request.web_search)
         yield event({"type": "status", "stage": "searching" if searching else "thinking"})
         prompt, sources, search_status = await prepare_chat(request, capability)
         if searching:

@@ -233,23 +233,25 @@ export default function App() {
           <button className="lab-back" onClick={() => setEntered(false)}>← DOTSON LABS</button>
         </div>
 
-        <div className="chat-header-actions"><span className="chat-status">● ONLINE</span><ShareShady /></div>
+        <details className="chat-menu">
+          <summary className="share-button">Menu</summary>
+          <section className="conversation-tools" aria-label="Conversations">
+            <div className="conversation-actions">
+              <button onClick={startChat} disabled={loading}>+ New chat</button>
+              <label>Saved chats{" "}
+                <select aria-label="Saved conversations" value={activeChat.id} disabled={loading}
+                  onChange={event => { setConversations(old => ({ ...old, activeId: event.target.value })); setInput(""); }}>
+                  {conversations.chats.map(chat => <option key={chat.id} value={chat.id}>{chat.title}</option>)}
+                </select>
+              </label>
+              <button onClick={renameChat} disabled={loading}>Rename</button>
+              <button onClick={removeChat} disabled={loading}>Delete</button>
+            </div>
+            <p>{storageNotice || "Saved in this browser. Clearing browser data removes saved chats."}</p>
+            <ShareShady />
+          </section>
+        </details>
       </header>
-
-      <section className="conversation-tools" aria-label="Conversations">
-        <div className="conversation-actions">
-          <button onClick={startChat} disabled={loading}>+ New chat</button>
-          <label>Saved chats{" "}
-            <select aria-label="Saved conversations" value={activeChat.id} disabled={loading}
-              onChange={event => { setConversations(old => ({ ...old, activeId: event.target.value })); setInput(""); }}>
-              {conversations.chats.map(chat => <option key={chat.id} value={chat.id}>{chat.title}</option>)}
-            </select>
-          </label>
-          <button onClick={renameChat} disabled={loading}>Rename</button>
-          <button onClick={removeChat} disabled={loading}>Delete</button>
-        </div>
-        <p>{storageNotice || "Saved in this browser. Clearing browser data removes saved chats."}</p>
-      </section>
       <main className="chat-feed" ref={chatScroll} onScroll={trackScroll} aria-label="Conversation messages" tabIndex={0}>
         {messages.map((message, index) => (
           <div
@@ -360,8 +362,14 @@ const landingCss = `
 .share-button:focus-visible { outline:2px solid #b0f2e9; outline-offset:3px; }
 .share-notice { position:absolute; right:0; top:calc(100% + 6px); z-index:2; min-width:110px; padding:8px; border-radius:8px; background:#102a36; color:#f1f4f2; font:13px Arial,sans-serif; }
 .share-notice input { display:block; width:min(220px,65vw); margin-top:6px; font-size:16px; }
-.chat-header-actions { display:flex; align-items:center; gap:12px; }
-@media(max-width:480px) { .chat-header-actions .chat-status { display:none; } }
+.chat-header { position:relative; z-index:2; }
+.chat-menu summary { display:list-item; box-sizing:border-box; padding-top:12px; }
+.chat-menu summary:focus-visible { outline:2px solid var(--mint); outline-offset:3px; }
+.chat-page .chat-menu .conversation-tools { position:absolute; top:100%; right:12px; box-sizing:border-box; width:min(360px, calc(100% - 24px)); max-height:60dvh; overflow:auto; background:#0a151b; border:1px solid var(--line); border-radius:12px; box-shadow:0 12px 30px #0008; }
+.chat-menu .conversation-actions label { order:-1; flex:0 0 100%; min-width:0; }
+.chat-menu .conversation-actions select { display:block; width:100%; max-width:100%; margin-top:4px; }
+.chat-menu .share-shady { margin-top:12px; }
+.chat-menu .share-notice { position:static; margin-top:6px; }
 
 .composer-controls { display:flex; flex-wrap:wrap; column-gap:20px; row-gap:0; align-items:center; }
 @media(max-width:650px) { .composer-controls { column-gap:12px; } .composer-controls .search-control { flex-wrap:wrap; gap:5px; margin-bottom:8px; } .composer-controls .search-control select { font-size:14px; min-height:38px; } }

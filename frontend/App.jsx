@@ -216,6 +216,7 @@ export default function App() {
         <p className="lab-intro">Meet ODB SHADY 6.9. Your space to ask questions, explore ideas, and search the web.</p>
         <button className="lab-enter" onClick={() => { setEntered(true); window.scrollTo(0, 0); }}>Enter ODB SHADY 6.9 <span aria-hidden="true">↗</span></button>
         <p className="lab-hint">Step inside. Bring your curiosity.</p>
+        <a className="lab-download" href="/download.html">Get Shady for your phone ↓</a>
       </section>
       <footer className="lab-footer"><span>DOTSON LABS / ARTIFICIAL INTELLIGENCE</span><span>ASK. EXPLORE. CREATE.</span></footer>
     </main>
@@ -358,6 +359,8 @@ export default function App() {
   );
 }
 const landingCss = `
+.lab-download { display:inline-block; margin-top:12px; padding:10px 16px; border:1px solid #41858a; border-radius:9px; color:#b0f2e9; background:#102a36; font:600 15px Arial,sans-serif; text-decoration:none; }
+.lab-download:focus-visible { outline:2px solid #b0f2e9; outline-offset:3px; }
 .share-shady { position:relative; }
 .share-button { background:#102a36; color:#b0f2e9; border:1px solid #3997a3; border-radius:8px; min-height:42px; padding:8px 12px; font:600 14px Arial,sans-serif; cursor:pointer; }
 .share-button:focus-visible { outline:2px solid #b0f2e9; outline-offset:3px; }

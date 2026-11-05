@@ -1,0 +1,4 @@
+<resources>
+    <string name="connection_error">Shady couldn\'t connect. Check your internet connection and try again.</string>
+    <string name="retry">Try again</string>
+</resources>

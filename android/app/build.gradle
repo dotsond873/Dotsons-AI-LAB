@@ -1,0 +1,16 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.dotsonlabs.shady'
+    compileSdk 36
+    defaultConfig {
+        applicationId 'com.dotsonlabs.shady'
+        minSdk 24
+        targetSdk 36
+        versionCode Integer.parseInt(System.getenv('SHADY_VERSION_CODE') ?: '1')
+        versionName System.getenv('SHADY_VERSION_NAME') ?: '1.0.0'
+    }
+    buildTypes {
+        release { minifyEnabled false }
+    }
+}

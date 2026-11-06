@@ -1,4 +1,6 @@
 import os
+import asyncio
+from contextlib import suppress
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -15,6 +17,7 @@ from core.prompt_budget import MAX_PROMPT_BYTES, fit_history, fit_search_context
 from core.memory import memory
 from core.router import router
 from core.repo_reader import read_repo_command
+from core.image_generation import generate_image, image_configuration, ImageGenerationError
 
 from providers.groqcloud_provider import GroqCloudProvider
 
@@ -106,6 +109,7 @@ class ChatResponse(BaseModel):
     timestamp: str
     sources: list[dict[str, str]] = Field(default_factory=list)
     search_status: str = "not_requested"
+    image: dict[str, str] | None = None
 
 
 def build_prompt(
@@ -128,12 +132,17 @@ def build_prompt(
     history = memory.get_history(session_id) if history is None else history
 
     history_text = ""
+    image_config = image_configuration()
+    image_status = "connected" if image_config["enabled"] and image_config["configured"] else "awaiting owner activation"
 
     def render():
         return f"""
 SYSTEM:
 {personality}
 Current local date: {datetime.now(ZoneInfo("America/Chicago")).strftime("%Y-%m-%d")} (America/Chicago).
+Image creation is {image_status}. Users can choose Menu > Create image or type
+/image followed by a description. Only the image tool can create and display an image.
+Never claim you generated an image in an ordinary text response.
 Answer stable factual and historical questions from your knowledge when confident.
 Not having a web source does not by itself prevent answering a known historical fact.
 If uncertain, say so; never invent facts or citations. Live/current claims and explicit
@@ -213,6 +222,7 @@ async def health():
             "key_has_value": key_has_value,
             "similar_name_present": similar_name_present,
         },
+        "image_generation": image_configuration(),
         "status": "healthy",
         "name": APP_NAME,
         "version": APP_VERSION,
@@ -288,6 +298,29 @@ async def prepare_chat(request, capability):
 
 async def chat_events(request, capability):
     try:
+        if capability == "image":
+            yield event({"type": "status", "stage": "generating_image"})
+            task = asyncio.create_task(generate_image(request.message))
+            try:
+                while not task.done():
+                    done, _ = await asyncio.wait({task}, timeout=10)
+                    if not done:
+                        yield event({"type": "status", "stage": "generating_image"})
+                image = await task
+            finally:
+                if not task.done():
+                    task.cancel()
+                with suppress(asyncio.CancelledError, ImageGenerationError):
+                    await task
+            text = "Here's your image."
+            yield event({"type": "meta", "capability": "image", "sources": [], "search_status": "not_requested"})
+            yield event({"type": "image", "image": image})
+            yield event({"type": "delta", "text": text})
+            memory.add_message(request.session_id, "user", request.message)
+            memory.add_message(request.session_id, "assistant", "Generated an image: " + image["prompt"])
+            yield event({"type": "done", "session_id": request.session_id, "model": image["model"],
+                         "timestamp": datetime.now(timezone.utc).isoformat()})
+            return
         searching = request.message.split(maxsplit=1)[:1] != ["/repo"] and should_search(request.message, request.web_search)
         yield event({"type": "status", "stage": "searching" if searching else "thinking"})
         prompt, sources, search_status = await prepare_chat(request, capability)
@@ -297,6 +330,8 @@ async def chat_events(request, capability):
         async with aclosing(answer_events(provider, prompt, request, capability, sources, search_status, memory)) as events:
             async for record in events:
                 yield record
+    except ImageGenerationError as exc:
+        yield event({"type": "error", "message": str(exc), "status_code": exc.status_code})
     except HTTPException as exc:
         yield event({"type": "error", "message": exc.detail, "status_code": exc.status_code})
     except Exception:
@@ -314,6 +349,14 @@ async def chat(request: ChatRequest):
                 media_type="application/x-ndjson",
                 headers={"Cache-Control":"no-cache, no-transform", "X-Accel-Buffering":"no"},
             )
+
+        if capability == "image":
+            image = await generate_image(request.message)
+            memory.add_message(request.session_id, "user", request.message)
+            memory.add_message(request.session_id, "assistant", "Generated an image: " + image["prompt"])
+            return ChatResponse(response="Here's your image.", image=image, capability="image",
+                                session_id=request.session_id, model=image["model"],
+                                timestamp=datetime.now(timezone.utc).isoformat())
 
         prompt, sources, search_status = await prepare_chat(request, capability)
 
@@ -343,6 +386,8 @@ async def chat(request: ChatRequest):
             ).isoformat(),
         )
 
+    except ImageGenerationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
     except HTTPException:
         raise
     except Exception:

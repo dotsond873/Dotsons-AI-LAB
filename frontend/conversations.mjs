@@ -19,6 +19,10 @@ function safeMessage(message) {
     if (message[key] !== undefined) result[key] = message[key];
   }
   if (message.incomplete) result.incomplete = true;
+  if (message.image && typeof message.image.id === "string" && /^[a-zA-Z0-9-]{10,100}$/.test(message.image.id)) {
+    result.image = { id: message.image.id, prompt: String(message.image.prompt || "Generated image").slice(0, 4000),
+      model: String(message.image.model || ""), saved: message.image.saved !== false };
+  }
   if (Array.isArray(message.sources)) {
     result.sources = message.sources.filter(s => s && typeof s.url === "string" && (s.url.startsWith("https://") || s.url.startsWith("http://")))
       .map(s => ({ title: s.title || s.url, url: s.url, date: s.date || "", page_status: s.page_status || "not_read" }));
@@ -70,7 +74,8 @@ export function deleteConversation(state, id) {
 
 export function requestHistory(messages) {
   return messages.filter(m => !m.greeting && !m.error && !m.incomplete).slice(-20)
-    .map(m => ({ role: m.role, content: m.text.slice(0, 20000) }));
+    .map(m => ({ role: m.role, content: (m.image
+      ? m.text + "\nGenerated image description: " + m.image.prompt : m.text).slice(0, 20000) }));
 }
 
 export function updateMessage(state, chatId, messageId, patch) {

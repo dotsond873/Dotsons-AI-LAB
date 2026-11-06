@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { loadConversations, saveConversations, newConversation, appendMessage, updateMessage, deleteConversation, requestHistory, setPersonality } from "./conversations.mjs";
 import { readAnswerStream } from "./answer-stream.mjs";
+import { saveGeneratedImage, loadGeneratedImage, deleteGeneratedImages } from "./generated-images.mjs";
 import labArt from "./assets/odb-lab-v2.webp";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -41,6 +42,28 @@ function ShareShady() {
       </div>}
     </div>
   );
+}
+
+function GeneratedImage({ image }) {
+  const [source, setSource] = useState("");
+  const [unavailable, setUnavailable] = useState(false);
+  useEffect(() => {
+    let disposed = false, objectUrl;
+    setSource("");
+    setUnavailable(false);
+    loadGeneratedImage(image.id).then(blob => {
+      if (disposed) return;
+      if (!blob) { setUnavailable(true); return; }
+      objectUrl = URL.createObjectURL(blob);
+      setSource(objectUrl);
+    }).catch(() => { if (!disposed) setUnavailable(true); });
+    return () => { disposed = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [image.id]);
+  return <figure className="generated-image">
+    {source ? <img src={source} alt={image.prompt} />
+      : <p role="status">{unavailable ? "This image is no longer available on this device." : "Loading image…"}</p>}
+    {!image.saved && <figcaption>Image storage is unavailable. This image is available in this tab for now.</figcaption>}
+  </figure>;
 }
 
 export default function App() {
@@ -111,6 +134,7 @@ export default function App() {
 
   function removeChat() {
     if (sending.current || !window.confirm("Delete this saved conversation from this browser?")) return;
+    void deleteGeneratedImages(activeChat.messages);
     setConversations(old => deleteConversation(old, activeChat.id));
     setInput("");
   }
@@ -131,7 +155,7 @@ export default function App() {
     const targetId = activeChat.id;
     const messageId = crypto.randomUUID();
     const history = requestHistory(activeChat.messages);
-    let partial = "", started = false, flushTimer;
+    let partial = "", started = false, flushTimer, generatedImage;
     function patch(patch) {
       setConversations(old => updateMessage(old, targetId, messageId, patch));
     }
@@ -157,7 +181,8 @@ export default function App() {
       if ((response.headers.get("content-type") || "").includes("application/x-ndjson")) {
         await readAnswerStream(response, event => {
           if (event.type === "status") {
-            setActivity(event.stage === "searching" ? "Searching the web…" : "Shady is thinking…");
+            setActivity(event.stage === "generating_image" ? "Shady is creating your image… This may take a minute or two."
+              : event.stage === "searching" ? "Searching the web…" : "Shady is thinking…");
           } else if (event.type === "meta") {
             started = true;
             setStreaming(true);
@@ -165,6 +190,8 @@ export default function App() {
               id:messageId, role:"assistant", text:"", incomplete:true,
               capability:event.capability, sources:event.sources || [], searchStatus:event.search_status,
             }));
+          } else if (event.type === "image") {
+            generatedImage = event.image;
           } else if (event.type === "delta") {
             partial += event.text || "";
             if (!flushTimer) flushTimer = setTimeout(() => flush(), 75);
@@ -172,12 +199,17 @@ export default function App() {
             flush(false);
           }
         });
+        if (generatedImage) {
+          const image = await saveGeneratedImage(generatedImage);
+          patch({ image, incomplete: false });
+        }
       } else {
         // Compatible with the previous backend during a staggered deployment.
         const data = await response.json();
+        const image = data.image ? await saveGeneratedImage(data.image) : undefined;
         setConversations(old => appendMessage(old, targetId, {
           role:"assistant", text:data.response, capability:data.capability,
-          sources:data.sources || [], searchStatus:data.search_status,
+          sources:data.sources || [], searchStatus:data.search_status, image,
         }));
       }
     } catch (error) {
@@ -239,6 +271,11 @@ export default function App() {
           <section className="conversation-tools" aria-label="Conversations">
             <div className="conversation-actions">
               <button onClick={startChat} disabled={loading}>+ New chat</button>
+              <button disabled={loading} onClick={event => {
+                setInput("/image ");
+                event.currentTarget.closest("details").open = false;
+                inputBox.current?.focus();
+              }}>Create image</button>
               <label>Saved chats{" "}
                 <select aria-label="Saved conversations" value={activeChat.id} disabled={loading}
                   onChange={event => { setConversations(old => ({ ...old, activeId: event.target.value })); setInput(""); }}>
@@ -299,6 +336,7 @@ export default function App() {
   )}
 </div>
 
+            {message.image && <GeneratedImage image={message.image} />}
             {message.sources?.length > 0 && (
               <div className="web-sources">
                 <strong>Web sources</strong>
@@ -359,6 +397,9 @@ export default function App() {
   );
 }
 const landingCss = `
+.generated-image { margin:16px 0 0; }
+.generated-image img { display:block; width:100%; max-width:640px; height:auto; border-radius:12px; }
+.generated-image figcaption { color:#a8bdc1; font-size:12px; margin-top:8px; }
 .lab-download { display:inline-block; margin-top:12px; padding:10px 16px; border:1px solid #41858a; border-radius:9px; color:#b0f2e9; background:#102a36; font:600 15px Arial,sans-serif; text-decoration:none; }
 .lab-download:focus-visible { outline:2px solid #b0f2e9; outline-offset:3px; }
 .share-shady { position:relative; }

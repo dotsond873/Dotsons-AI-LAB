@@ -1,3 +1,6 @@
+from core.image_generation import is_image_request
+
+
 class ODBRouter:
     """
     Capability router for ODB SHADY 6.9.
@@ -8,6 +11,9 @@ class ODBRouter:
 
     def route(self, message: str) -> str:
         message_lower = message.lower()
+
+        if is_image_request(message):
+            return "image"
 
         serious_words = [
             "suicide",
@@ -28,12 +34,6 @@ class ODBRouter:
 
         if any(term in message_lower for term in serious_words):
             return "serious"
-
-        if any(
-            term in message_lower
-            for term in ["image", "picture", "photo", "draw", "generate a scene"]
-        ):
-            return "image"
 
         if any(
             term in message_lower

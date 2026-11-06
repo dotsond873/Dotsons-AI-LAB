@@ -47,6 +47,37 @@ def image_configuration():
     }
 
 
+def image_limit_error(response):
+    """Expose only recognized error categories, never upstream messages or secrets."""
+    try:
+        error = response.json().get("error", {})
+        if not isinstance(error, dict):
+            error = {}
+    except (ValueError, AttributeError):
+        error = {}
+    code = error.get("code")
+    category = error.get("type")
+    messages = {
+        "credit_balance_exhausted": "The image API has no prepaid credits remaining. The owner needs to add credits in OpenAI API Billing; waiting will not fix this.",
+        "organization_spend_limit_exceeded": "The image API organization spending limit was reached. The owner needs to review OpenAI organization Limits.",
+        "project_spend_limit_exceeded": "The image API project spending limit was reached. The owner needs to review that project's spending limit.",
+        "organization_usage_limit_exceeded": "The image API account's approved usage limit was reached. The owner needs to review OpenAI Limits or request a higher usage limit.",
+        "insufficient_quota": "The image API has insufficient quota. The owner needs to check API credits and usage limits; repeated retries will not restore access.",
+    }
+    if isinstance(code, str) and code in messages:
+        return ImageGenerationError(messages[code], 429)
+    if code in ("rate_limit_exceeded", "slow_down") or category == "rate_limit_error":
+        delay = response.headers.get("retry-after", "")
+        if delay.isdigit() and len(delay) <= 7:
+            instruction = "Wait at least " + str(int(delay)) + " seconds before retrying."
+        else:
+            instruction = "Wait before retrying and check the image model's rate limits if it continues."
+        return ImageGenerationError("The image provider temporarily limited requests. " + instruction, 429)
+    if category == "insufficient_quota":
+        return ImageGenerationError(messages["insufficient_quota"], 429)
+    return ImageGenerationError("The image provider rejected the request with HTTP 429 but did not identify a recognized cause. The owner needs to check API Billing and model Limits before retrying.", 429)
+
+
 async def generate_image(message, attachments=None):
     prompt = message.strip()
     for command in ("/image", "/edit"):
@@ -95,7 +126,7 @@ async def generate_image(message, attachments=None):
         if response.status_code in (401, 403):
             raise ImageGenerationError("The image provider needs the owner's attention. Check the API key and image-model access.")
         if response.status_code == 429:
-            raise ImageGenerationError("The image provider's quota or rate limit was reached. Please try again later.", 429)
+            raise image_limit_error(response)
         if response.status_code == 400:
             raise ImageGenerationError("The image provider could not accept this request. Try a different image description.", 400)
         response.raise_for_status()
@@ -114,4 +145,5 @@ async def generate_image(message, attachments=None):
         raise ImageGenerationError("Shady couldn't finish creating the image. Please try again.", 502) from None
     finally:
         _slots.release()
+
 

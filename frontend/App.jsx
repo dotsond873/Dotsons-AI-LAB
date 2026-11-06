@@ -9,6 +9,50 @@ import remarkGfm from "remark-gfm";
 const API_URL =
   import.meta.env.VITE_API_URL || "http://localhost:8000";
 
+function ReplyActions({ message, onFeedback }) {
+  const [notice, setNotice] = useState("");
+  const [sourcesOpen, setSourcesOpen] = useState(false);
+  const [manualCopy, setManualCopy] = useState(false);
+  const sourcesId = "reply-sources-" + useRef(crypto.randomUUID()).current;
+  const sources = message.sources || [];
+  const text = [message.text, message.image ? "Image description: " + message.image.prompt : "",
+    sources.length ? "Sources:\n" + sources.map(s => s.title + ": " + s.url).join("\n") : ""].filter(Boolean).join("\n\n");
+  async function copy() {
+    try { await navigator.clipboard.writeText(text); setNotice("Copied reply"); setManualCopy(false); }
+    catch { setManualCopy(true); setNotice("Select and copy the reply below"); }
+  }
+  async function share() {
+    setNotice("");
+    try {
+      if (window.ShadyAndroid?.shareText) { window.ShadyAndroid.shareText(text); return; }
+      if (navigator.share) { await navigator.share({ title:"Shady reply", text }); return; }
+      await copy();
+      setNotice("Sharing is unavailable here. Copy this reply to share it.");
+    } catch (error) {
+      if (error.name !== "AbortError") { await copy(); setNotice("Could not open sharing. Copy this reply to share it."); }
+    }
+  }
+  function vote(value) { onFeedback(message.feedback === value ? undefined : value); setNotice(message.feedback === value ? "Rating removed" : "Rating saved in this browser"); }
+  return <div className="reply-tools">
+    <div className="reply-actions" role="group" aria-label="Reply actions">
+      <button type="button" title="Helpful" aria-label="Helpful" aria-pressed={message.feedback === "up"} onClick={() => vote("up")}>👍</button>
+      <button type="button" title="Not helpful" aria-label="Not helpful" aria-pressed={message.feedback === "down"} onClick={() => vote("down")}>👎</button>
+      <button type="button" onClick={copy}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V3H3v13h5"/></svg><span>Copy</span></button>
+      <button type="button" onClick={share}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m9 10 6-4m-6 8 6 4"/></svg><span>Share</span></button>
+      <button type="button" title="Sources" aria-label={"Sources" + (sources.length ? " (" + sources.length + ")" : "")} aria-expanded={sourcesOpen} aria-controls={sourcesId} onClick={() => setSourcesOpen(old => !old)}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18M5 6h14M5 18h14"/></svg><span>Sources{sources.length ? " " + sources.length : ""}</span></button>
+    </div>
+    {notice && <div className="reply-notice" role="status">{notice}</div>}
+    {manualCopy && <textarea className="reply-copy-fallback" aria-label="Reply text to copy" readOnly value={text} onFocus={event => event.target.select()} />}
+    {sourcesOpen && <div id={sourcesId} className="web-sources">
+      <strong>Sources for this reply</strong>
+      {sources.length ? <ul>{sources.map((source, index) => <li key={source.url + index}>
+        <a href={source.url} target="_blank" rel="noopener noreferrer">{source.title}</a>
+        <small>{source.page_status === "read" ? "Page excerpt retrieved" : "Search summary only"}{source.date ? ` · ${source.date}` : " · Publication date not provided"}</small>
+      </li>)}</ul> : <p>{message.searchStatus === "no_results" ? "No web results were found for this reply." : "No web sources were used for this reply."}</p>}
+    </div>}
+  </div>;
+}
+
 function ShareShady() {
   const [notice, setNotice] = useState("");
   const url = new URL("/", window.location.origin).href;
@@ -378,18 +422,12 @@ export default function App() {
 </div>
 
             {message.image && <GeneratedImage image={message.image} />}
-            {message.sources?.length > 0 && (
-              <div className="web-sources">
-                <strong>Web sources</strong>
-                <ul>{message.sources.map((source) => (
-                  <li key={source.url}>
-                    <a href={source.url} target="_blank" rel="noopener noreferrer" style={{ color: "#7ccfff" }}>{source.title}</a>
-                    <small style={{ display: "block", color: "#aaa", marginTop: "4px" }}>{source.page_status === "read" ? "Page excerpt retrieved" : "Search summary only"}{source.date ? ` · ${source.date}` : " · Publication date not provided"}</small>
-                  </li>
-                ))}</ul>
-              </div>
-            )}
             {message.searchStatus === "no_results" && <p>No web results found.</p>}
+
+            {message.role === "assistant" && !message.greeting && !message.incomplete && !message.error && <ReplyActions message={message} onFeedback={feedback => {
+              const chatId = activeChat.id;
+              setConversations(old => ({ ...old, chats:old.chats.map(chat => chat.id === chatId ? { ...chat, messages:chat.messages.map((item, i) => i === index ? { ...item, feedback } : item) } : chat) }));
+            }} />}
 
             {message.capability && (
               <div className="message-mode">
@@ -446,6 +484,17 @@ export default function App() {
   );
 }
 const landingCss = `
+.reply-actions { display:flex; flex-wrap:wrap; align-items:center; gap:4px; margin-top:16px; padding-top:8px; border-top:1px solid #24434b; }
+.reply-actions button { display:inline-flex; align-items:center; justify-content:center; gap:5px; min-width:44px; min-height:44px; padding:6px 8px; border:1px solid transparent; border-radius:8px; background:transparent; color:#b8ced2; font:13px Arial,sans-serif; cursor:pointer; }
+.reply-actions button:hover, .reply-actions button[aria-pressed="true"] { color:#b0f2e9; background:#19343e; border-color:#527983; }
+.reply-actions button:focus-visible { outline:2px solid #b0f2e9; outline-offset:2px; }
+.reply-actions svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.7; }
+.reply-notice { font-size:12px; color:#a8bdc1; margin:6px 0; }
+.reply-copy-fallback { width:100%; box-sizing:border-box; min-height:100px; }
+.reply-tools .web-sources a { color:#7ccfff; }
+.reply-tools .web-sources small { display:block; color:#a8bdc1; margin-top:4px; }
+@media(max-width:380px) { .reply-actions button { padding:6px; } .reply-actions { gap:0; } }
+
 
 .attach-button { flex-shrink:0; padding:10px; border:0; background:transparent; color:#afe4e3; cursor:pointer; min-width:44px; min-height:44px; }
 .attachment-tray { padding:8px 16px; display:flex; flex-wrap:wrap; gap:8px; color:#afe4e3; font-size:13px; }
@@ -564,6 +613,7 @@ body { margin: 0; background: #080d10; }
   .chat-page { height:auto !important; display:block !important; overflow:visible !important; background:white !important; color:black !important; }
   .chat-page .chat-feed { height:auto !important; overflow:visible !important; display:block !important; padding:0 !important; }
   .chat-header { position:static !important; color:black !important; background:white !important; }
+  .reply-actions, .reply-notice, .reply-copy-fallback { display:none !important; }
   .chat-menu, .composer-dock, .jump-latest, .thinking, .lab-back { display:none !important; }
   .chat-page .chat-message { color:black !important; background:white !important; border:1px solid #ccc !important; box-shadow:none !important; max-width:100% !important; break-inside:auto; }
   .chat-page .chat-markdown { overflow:visible !important; color:black !important; }
@@ -575,5 +625,6 @@ body { margin: 0; background: #080d10; }
 }
 
 `;
+
 
 

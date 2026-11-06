@@ -7,8 +7,8 @@ android {
         applicationId 'com.dotsonlabs.shady'
         minSdk 24
         targetSdk 36
-        versionCode Integer.parseInt(System.getenv('SHADY_VERSION_CODE') ?: '2')
-        versionName System.getenv('SHADY_VERSION_NAME') ?: '1.0.1'
+        versionCode Integer.parseInt(System.getenv('SHADY_VERSION_CODE') ?: '3')
+        versionName System.getenv('SHADY_VERSION_NAME') ?: '1.0.2'
     }
     buildTypes {
         release { minifyEnabled false }

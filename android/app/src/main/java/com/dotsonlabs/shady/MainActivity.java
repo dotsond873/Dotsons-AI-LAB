@@ -66,6 +66,21 @@ public class MainActivity extends Activity {
         settings.setUserAgentString(settings.getUserAgentString() + " ShadyAndroid/1.0");
         webView.addJavascriptInterface(new Object() {
             @JavascriptInterface
+            public void shareText(String text) {
+                runOnUiThread(() -> {
+                    Uri current = Uri.parse(webView.getUrl() == null ? "" : webView.getUrl());
+                    if (!"https".equals(current.getScheme()) || !HOST.equals(current.getHost()) || text == null) return;
+                    Intent share = new Intent(Intent.ACTION_SEND);
+                    share.setType("text/plain");
+                    share.putExtra(Intent.EXTRA_TEXT, text.substring(0, Math.min(text.length(), 100000)));
+                    try { startActivity(Intent.createChooser(share, "Share Shady reply")); }
+                    catch (ActivityNotFoundException ignored) {
+                        android.widget.Toast.makeText(MainActivity.this, "No sharing app is available.", android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                });
+            }
+
+            @JavascriptInterface
             public void printChat() {
                 runOnUiThread(() -> {
                     Uri current = Uri.parse(webView.getUrl() == null ? "" : webView.getUrl());

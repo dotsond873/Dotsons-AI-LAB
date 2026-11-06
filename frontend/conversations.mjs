@@ -18,6 +18,7 @@ function safeMessage(message) {
   for (const key of ["id", "incomplete", "greeting", "error", "capability", "searchStatus"]) {
     if (message[key] !== undefined) result[key] = message[key];
   }
+  if (["up", "down"].includes(message.feedback)) result.feedback = message.feedback;
   if (message.incomplete) result.incomplete = true;
   if (message.image && typeof message.image.id === "string" && /^[a-zA-Z0-9-]{10,100}$/.test(message.image.id)) {
     result.image = { id: message.image.id, prompt: String(message.image.prompt || "Generated image").slice(0, 4000),
@@ -89,3 +90,4 @@ export function setPersonality(state, chatId, personality) {
   if (!PERSONALITIES.includes(personality)) return state;
   return { ...state, chats: state.chats.map(chat => chat.id === chatId ? { ...chat, personality } : chat) };
 }
+

@@ -29,9 +29,18 @@ data, so images do not fill localStorage. Deleting a conversation also removes
 its saved image blobs. If image storage is unavailable, the image stays visible
 in the current tab with a warning. Clearing application/browser data removes
 saved images. Text history includes the image's description, not its pixels.
-This feature creates new images from text. Image editing and uploaded-image
-understanding require separate implementation.
+Photo editing sends the attached source photos directly to the OpenAI Images
+edit endpoint, rather than editing a text description of the photo. Choose
+**Menu → Edit photo**, select a JPEG/PNG/WebP, and finish the `/edit` instruction.
+Natural requests such as `age enhance this photo to me at age 80` also route to
+editing when a photo is attached. Reading requests such as `describe this photo`
+continue to use the vision reader. Editing accepts only image attachments.
+The activation flag and API key above apply to both creation and editing.
+If either is missing, the application displays an actionable configuration error.
+Age progression is an artistic approximation. Reattach the source photo for each
+edit; saved chat history contains descriptions, not the original pixels.
 
 Deploy backend and frontend. The Android wrapper loads the live frontend.
 Test generation, progress, reopening a saved chat, deleting a chat, and an
 upstream provider failure. Automated checks use mocked provider responses.
+

@@ -18,7 +18,7 @@ from core.prompt_budget import MAX_PROMPT_BYTES, fit_history, fit_search_context
 from core.memory import memory
 from core.router import router
 from core.repo_reader import read_repo_command
-from core.image_generation import generate_image, image_configuration, ImageGenerationError
+from core.image_generation import generate_image, image_configuration, ImageGenerationError, is_image_edit_request
 
 from providers.groqcloud_provider import GroqCloudProvider
 
@@ -145,6 +145,10 @@ Current local date: {datetime.now(ZoneInfo("America/Chicago")).strftime("%Y-%m-%
 Image creation is {image_status}. Users can choose Menu > Create image or type
 /image followed by a description. Only the image tool can create and display an image.
 Never claim you generated an image in an ordinary text response.
+Photo reading and photo editing are separate capabilities. With an attached photo,
+/edit followed by the requested change invokes the photo editor. If users request
+an edit in text chat, explain this path; never claim photo editing is inherently impossible.
+An age-progressed photo is an artistic approximation, not a prediction.
 Answer stable factual and historical questions from your knowledge when confident.
 Not having a web source does not by itself prevent answering a known historical fact.
 If uncertain, say so; never invent facts or citations. Live/current claims and explicit
@@ -301,22 +305,22 @@ async def prepare_chat(request, capability):
 
 async def chat_events(request, capability):
     try:
-        if capability == "image":
-            yield event({"type": "status", "stage": "generating_image"})
-            task = asyncio.create_task(generate_image(request.message))
+        if capability in ("image", "image_edit"):
+            yield event({"type": "status", "stage": "editing_image" if capability == "image_edit" else "generating_image"})
+            task = asyncio.create_task(generate_image(request.message, request.attachments) if capability == "image_edit" else generate_image(request.message))
             try:
                 while not task.done():
                     done, _ = await asyncio.wait({task}, timeout=10)
                     if not done:
-                        yield event({"type": "status", "stage": "generating_image"})
+                        yield event({"type": "status", "stage": "editing_image" if capability == "image_edit" else "generating_image"})
                 image = await task
             finally:
                 if not task.done():
                     task.cancel()
                 with suppress(asyncio.CancelledError, ImageGenerationError):
                     await task
-            text = "Here's your image."
-            yield event({"type": "meta", "capability": "image", "sources": [], "search_status": "not_requested"})
+            text = "Here's your edited photo." if capability == "image_edit" else "Here's your image."
+            yield event({"type": "meta", "capability": capability, "sources": [], "search_status": "not_requested"})
             yield event({"type": "image", "image": image})
             yield event({"type": "delta", "text": text})
             memory.add_message(request.session_id, "user", request.message)
@@ -346,7 +350,9 @@ async def chat(request: ChatRequest):
     try:
         for item in request.attachments:
             decode_attachment(item)
-        capability = "chat" if request.attachments else router.route(request.message)
+        edit_requested = is_image_edit_request(request.message)
+        capability = ("image_edit" if edit_requested and (request.attachments or request.message.split(maxsplit=1)[:1] == ["/edit"])
+                      else "chat" if request.attachments else router.route(request.message))
 
         if request.stream:
             return StreamingResponse(
@@ -355,11 +361,11 @@ async def chat(request: ChatRequest):
                 headers={"Cache-Control":"no-cache, no-transform", "X-Accel-Buffering":"no"},
             )
 
-        if capability == "image":
-            image = await generate_image(request.message)
+        if capability in ("image", "image_edit"):
+            image = await (generate_image(request.message, request.attachments) if capability == "image_edit" else generate_image(request.message))
             memory.add_message(request.session_id, "user", request.message)
             memory.add_message(request.session_id, "assistant", "Generated an image: " + image["prompt"])
-            return ChatResponse(response="Here's your image.", image=image, capability="image",
+            return ChatResponse(response="Here's your edited photo." if capability == "image_edit" else "Here's your image.", image=image, capability=capability,
                                 session_id=request.session_id, model=image["model"],
                                 timestamp=datetime.now(timezone.utc).isoformat())
 
@@ -423,4 +429,5 @@ async def clear_memory(session_id: str):
         "session_id": session_id,
         "cleared": cleared,
     }
+
 

@@ -209,7 +209,8 @@ export default function App() {
       if ((response.headers.get("content-type") || "").includes("application/x-ndjson")) {
         await readAnswerStream(response, event => {
           if (event.type === "status") {
-            setActivity(event.stage === "generating_image" ? "Shady is creating your image… This may take a minute or two."
+            setActivity(event.stage === "editing_image" ? "Shady is editing your photo… This may take a minute or two."
+              : event.stage === "generating_image" ? "Shady is creating your image… This may take a minute or two."
               : event.stage === "searching" ? "Searching the web…" : "Shady is thinking…");
           } else if (event.type === "meta") {
             started = true;
@@ -305,6 +306,12 @@ export default function App() {
                 event.currentTarget.closest("details").open = false;
                 inputBox.current?.focus();
               }}>Create image</button>
+              <button disabled={loading} onClick={event => {
+                setInput("/edit ");
+                event.currentTarget.closest("details").open = false;
+                filePicker.current?.click();
+                inputBox.current?.focus();
+              }}>Edit photo</button>
               <button type="button" disabled={loading} onClick={event => {
                 event.currentTarget.closest("details").open = false;
                 if (window.ShadyAndroid?.printChat) window.ShadyAndroid.printChat();
@@ -568,4 +575,5 @@ body { margin: 0; background: #080d10; }
 }
 
 `;
+
 

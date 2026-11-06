@@ -81,6 +81,10 @@ export default function App() {
   const sending = useRef(false);
   const chatScroll = useRef(null);
   const inputBox = useRef(null);
+  const filePicker = useRef(null);
+  const [attachments, setAttachments] = useState([]);
+  const [attachmentNotice, setAttachmentNotice] = useState("");
+  const [readingFiles, setReadingFiles] = useState(false);
   const followNewest = useRef(true);
   const [showJump, setShowJump] = useState(false);
   const activeChat = conversations.chats.find(c => c.id === conversations.activeId) || conversations.chats[0];
@@ -146,9 +150,32 @@ export default function App() {
     setConversations(old => ({ ...old, chats: old.chats.map(c => c.id === activeChat.id ? { ...c, title: name.trim().slice(0, 80) } : c) }));
   }
 
+  useEffect(() => { setAttachments([]); setAttachmentNotice(""); }, [conversations.activeId]);
+
+  async function chooseFiles(event) {
+    const files = Array.from(event.target.files || []);
+    event.target.value = "";
+    setAttachmentNotice("");
+    if (attachments.length + files.length > 3) { setAttachmentNotice("Choose up to 3 files per message."); return; }
+    setReadingFiles(true);
+    try {
+      const selected = await Promise.all(files.map(file => new Promise((resolve, reject) => {
+        if (!/\.(jpe?g|png|webp|pdf|txt|md|csv|json|py|js|jsx|ts|tsx|html|css|xml|ya?ml|log|sql)$/i.test(file.name)) { reject(new Error("Choose a photo, text PDF, text, CSV, JSON, or code file. Other formats are not supported yet.")); return; }
+        if (!file.size || file.size > 2 * 1024 * 1024) { reject(new Error("Each file must be nonempty and 2 MB or smaller.")); return; }
+        const reader = new FileReader();
+        reader.onload = () => resolve({name:file.name, data:String(reader.result).split(",")[1]});
+        reader.onerror = () => reject(new Error("Could not read that file. Please select it again."));
+        reader.readAsDataURL(file);
+      })));
+      setAttachments(old => [...old, ...selected]);
+    } catch (error) { setAttachmentNotice(error.message); }
+    finally { setReadingFiles(false); }
+  }
+
   async function sendMessage() {
-    const text = input.trim();
-    if (!text || sending.current) return;
+    const text = input.trim() || (attachments.length ? "Please review the attached files." : "");
+    if (!text || sending.current || readingFiles) return;
+    const selectedFiles = attachments;
     sending.current = true;
     followNewest.current = true;
     setShowJump(false);
@@ -164,15 +191,16 @@ export default function App() {
       flushTimer = undefined;
       patch({ text:partial, incomplete });
     }
-    setConversations(old => appendMessage(old, targetId, { role:"user", text }));
+    setConversations(old => appendMessage(old, targetId, { role:"user", text: text + (selectedFiles.length ? "\n\nAttached: " + selectedFiles.map(f => f.name).join(", ") : "") }));
     setInput("");
+    setAttachments([]);
     setLoading(true);
     setStreaming(false);
     setActivity("Connecting to Shady…");
     try {
       const response = await fetch(`${API_URL}/chat`, {
         method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({ message:text, session_id:targetId, web_search:webSearch, history, stream:true, personality:activeChat.personality || "shady" }),
+        body:JSON.stringify({ message:text, attachments:selectedFiles, session_id:targetId, web_search:webSearch, history, stream:true, personality:activeChat.personality || "shady" }),
       });
       if (!response.ok) {
         const error = await response.json();
@@ -214,6 +242,7 @@ export default function App() {
       }
     } catch (error) {
       clearTimeout(flushTimer);
+      if (selectedFiles.length) { setAttachments(selectedFiles); setInput(text); }
       const notice = (partial ? "\n\n" : "") + "Response interrupted: " + error.message;
       if (started) patch({ text:partial + notice, incomplete:false, error:true });
       else setConversations(old => appendMessage(old, targetId, { role:"assistant", text:notice, error:true }));
@@ -276,6 +305,11 @@ export default function App() {
                 event.currentTarget.closest("details").open = false;
                 inputBox.current?.focus();
               }}>Create image</button>
+              <button type="button" disabled={loading} onClick={event => {
+                event.currentTarget.closest("details").open = false;
+                if (window.ShadyAndroid?.printChat) window.ShadyAndroid.printChat();
+                else window.print();
+              }}>Print chat</button>
               <label>Saved chats{" "}
                 <select aria-label="Saved conversations" value={activeChat.id} disabled={loading}
                   onChange={event => { setConversations(old => ({ ...old, activeId: event.target.value })); setInput(""); }}>
@@ -369,7 +403,15 @@ export default function App() {
 
       <div className="composer-dock">
       {showJump && <button className="jump-latest" onClick={jumpToLatest}>↓ Latest messages</button>}
+      {(attachments.length > 0 || attachmentNotice) && <div className="attachment-tray">
+        {attachments.map((file, index) => <span key={index}>{file.name} <button type="button" disabled={loading} aria-label={"Remove " + file.name} onClick={() => setAttachments(old => old.filter((_, i) => i !== index))}>×</button></span>)}
+        {attachmentNotice && <div role="alert">{attachmentNotice}</div>}
+      </div>}
       <footer className="input-area">
+        <input ref={filePicker} type="file" multiple hidden accept=".jpg,.jpeg,.png,.webp,.pdf,.txt,.md,.csv,.json,.py,.js,.jsx,.ts,.tsx,.html,.css,.xml,.yaml,.yml,.log,.sql" onChange={chooseFiles} />
+        <button type="button" className="attach-button" aria-label="Attach photos or files" title="Attach photos or files (up to 3, 2 MB each)" disabled={loading || readingFiles} onClick={() => filePicker.current?.click()}>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="m21 11-8 8a6 6 0 0 1-8.5-8.5l9-9a4 4 0 0 1 5.7 5.7l-9 9a2 2 0 0 1-2.8-2.8l8-8" /></svg>
+        </button>
         <textarea
           ref={inputBox}
           aria-label="Message to Shady"
@@ -385,7 +427,7 @@ export default function App() {
 
         <button
           onClick={sendMessage}
-          disabled={loading || !input.trim()}
+          disabled={loading || readingFiles || (!input.trim() && !attachments.length)}
           className="send-button"
         >
           {loading ? "WAIT" : "SEND"}
@@ -397,6 +439,12 @@ export default function App() {
   );
 }
 const landingCss = `
+
+.attach-button { flex-shrink:0; padding:10px; border:0; background:transparent; color:#afe4e3; cursor:pointer; min-width:44px; min-height:44px; }
+.attachment-tray { padding:8px 16px; display:flex; flex-wrap:wrap; gap:8px; color:#afe4e3; font-size:13px; }
+.attachment-tray span { overflow-wrap:anywhere; background:#15313a; border-radius:12px; padding:5px 10px; }
+.attachment-tray button { background:transparent; color:inherit; border:0; min-width:32px; min-height:32px; }
+
 .generated-image { margin:16px 0 0; }
 .generated-image img { display:block; width:100%; max-width:640px; height:auto; border-radius:12px; }
 .generated-image figcaption { color:#a8bdc1; font-size:12px; margin-top:8px; }
@@ -504,4 +552,20 @@ body { margin: 0; background: #080d10; }
 .lab-back { background:none; border:0; color:#aaa; padding:8px 0 0; font-size:11px; letter-spacing:3px; cursor:pointer; }
 @media(max-width:650px) { .lab-nav { padding:24px; } .lab-brand small { font-size:32px; letter-spacing:-1px; margin-left:0; } .lab-edition { font-size:9px; letter-spacing:1px; } .lab-art { top:80px; height:auto; aspect-ratio:2 / 1; object-position:center; } .lab-shade { background:linear-gradient(0deg,#080d10 25%,transparent 65%); } .lab-copy { margin:auto 0 0; padding:calc(50vw + 35px) 24px 40px; } .lab-copy h1 { font-size:52px; letter-spacing:-2.5px; } .lab-eyebrow { margin-bottom:20px; } .lab-intro { font-size:15px; } .lab-footer { padding:20px 24px; font-size:8px; } .lab-footer span:last-child { display:none; } }
 @media(prefers-reduced-motion:reduce) { .lab-enter { transition:none; } }
+@media print {
+  html, body, #root { height:auto !important; overflow:visible !important; background:white !important; }
+  .chat-page { height:auto !important; display:block !important; overflow:visible !important; background:white !important; color:black !important; }
+  .chat-page .chat-feed { height:auto !important; overflow:visible !important; display:block !important; padding:0 !important; }
+  .chat-header { position:static !important; color:black !important; background:white !important; }
+  .chat-menu, .composer-dock, .jump-latest, .thinking, .lab-back { display:none !important; }
+  .chat-page .chat-message { color:black !important; background:white !important; border:1px solid #ccc !important; box-shadow:none !important; max-width:100% !important; break-inside:auto; }
+  .chat-page .chat-markdown { overflow:visible !important; color:black !important; }
+  .chat-page .chat-markdown pre { white-space:pre-wrap !important; overflow:visible !important; background:#f5f5f5 !important; color:black !important; }
+  .chat-page .chat-markdown pre code { white-space:pre-wrap !important; overflow-wrap:anywhere !important; }
+  .chat-page .chat-markdown table { min-width:0 !important; width:100% !important; table-layout:fixed; word-break:break-word !important; }
+  .chat-page .generated-image img { max-width:100% !important; max-height:230mm; object-fit:contain; }
+  .chat-page a { color:#145a88 !important; }
+}
+
 `;
+

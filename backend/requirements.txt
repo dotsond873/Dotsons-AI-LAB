@@ -4,3 +4,5 @@ pydantic
 python-dotenv
 httpx
 openai
+
+pypdf>=6.0,<7

@@ -1,3 +1,4 @@
+from core.attachments import Attachment, attachment_context, decode_attachment
 import os
 import asyncio
 from contextlib import suppress
@@ -94,6 +95,7 @@ class HistoryMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
+    attachments: list[Attachment] = Field(default_factory=list, max_length=3)
     session_id: str = "default"
     web_search: bool | None = None
     stream: bool = False
@@ -269,7 +271,7 @@ async def prepare_chat(request, capability):
     search_context = ""
     message = request.message
     repo_command = message.split(maxsplit=1)[:1] == ["/repo"]
-    use_search = not repo_command and should_search(message, request.web_search)
+    use_search = not request.attachments and not repo_command and should_search(message, request.web_search)
     if repo_command:
         try:
             message, search_context, source = await read_repo_command(message)
@@ -293,6 +295,7 @@ async def prepare_chat(request, capability):
         style=request.personality,
         history=([item.model_dump() for item in request.history] if request.history is not None else None),
     )
+    prompt += await attachment_context(request.attachments, provider, request.message)
     return prompt, sources, search_status
 
 
@@ -341,7 +344,9 @@ async def chat_events(request, capability):
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     try:
-        capability = router.route(request.message)
+        for item in request.attachments:
+            decode_attachment(item)
+        capability = "chat" if request.attachments else router.route(request.message)
 
         if request.stream:
             return StreamingResponse(
@@ -418,3 +423,4 @@ async def clear_memory(session_id: str):
         "session_id": session_id,
         "cleared": cleared,
     }
+
